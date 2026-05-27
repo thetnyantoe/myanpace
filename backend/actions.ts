@@ -13,7 +13,7 @@ export type ActionResult =
 
 function redirectPathForRole(role: string) {
   if (role === "OWNER") return "/o";
-  return "/backendtestui";
+  return "/";
 }
 
 async function findShopByName(
@@ -70,7 +70,7 @@ export async function loginUser(formData: FormData): Promise<ActionResult> {
     };
   }
 
-  revalidatePath("/backendtestui", "layout");
+  revalidatePath("/", "layout");
   redirect(redirectPathForRole(profile.role));
 }
 
@@ -115,7 +115,7 @@ export async function registerCustomer(
     return { ok: false, error: userError.message };
   }
 
-  revalidatePath("/backendtestui", "layout");
+  revalidatePath("/", "layout");
   return { ok: true, message: "Account created. You can now sign in." };
 }
 
@@ -137,7 +137,7 @@ export async function loginManager(formData: FormData): Promise<ActionResult> {
   }
 
   await setSession({ kind: "shop", id: shop.id });
-  revalidatePath("/backendtestui", "layout");
+  revalidatePath("/", "layout");
   redirect("/m");
 }
 
@@ -200,7 +200,7 @@ export async function addOwner(formData: FormData): Promise<ActionResult> {
     return { ok: false, error: brandError.message };
   }
 
-  revalidatePath("/backendtestui");
+  revalidatePath("/a");
   return {
     ok: true,
     message: `Owner "${name}" and brand "${brandName}" created.`,
@@ -212,8 +212,10 @@ export async function addShop(formData: FormData): Promise<ActionResult> {
   const password = String(formData.get("password") ?? "");
   const location = String(formData.get("location") ?? "").trim();
   const brandId = String(formData.get("brandId") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim();
+  const categoryId = String(formData.get("categoryId") ?? "").trim();
 
-  if (!name || !password || !location || !brandId) {
+  if (!name || !password || !location || !brandId || !categoryId) {
     return { ok: false, error: "All fields are required." };
   }
 
@@ -224,12 +226,14 @@ export async function addShop(formData: FormData): Promise<ActionResult> {
     password,
     location,
     brandId,
+    description,
+    categoryId,
   });
 
   if (error) {
     return { ok: false, error: error.message };
   }
 
-  revalidatePath("/backendtestui/add-shop");
+  revalidatePath("/o/addshop");
   return { ok: true, message: `Shop "${name}" created.` };
 }

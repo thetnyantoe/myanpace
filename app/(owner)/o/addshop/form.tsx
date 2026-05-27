@@ -1,16 +1,20 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useState, useEffect } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { addShop, type ActionResult } from "@/backend/actions";
 
 type Brand = { id: string; name: string };
+type Category = { id: string; category_name: string };
 
 const initial: ActionResult | null = null;
 
 export function AddShopForm() {
   const [ownerEmail, setOwnerEmail] = useState("");
   const [brands, setBrands] = useState<Brand[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loadingCategories, setLoadingCategories] = useState(false);
+  const [categoryError, setCategoryError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadingBrands, setLoadingBrands] = useState(false);
   const [state, formAction, pending] = useActionState(
@@ -65,6 +69,34 @@ export function AddShopForm() {
     setBrands(brandRows);
   }
 
+  useEffect(() => {
+    let mounted = true;
+    async function fetchCategories() {
+      setLoadingCategories(true);
+      setCategoryError(null);
+      const supabase = createClient();
+      const { data: rows, error } = await supabase
+        .from("Category")
+        .select("id, category_name");
+
+      if (!mounted) return;
+      setLoadingCategories(false);
+
+      if (error) {
+        setCategoryError(error.message);
+        setCategories([]);
+        return;
+      }
+
+      setCategories(rows ?? []);
+    }
+
+    fetchCategories();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   return (
     <form action={formAction} style={{ display: "grid", gap: "0.75rem" }}>
       <label>
@@ -109,6 +141,34 @@ export function AddShopForm() {
       </label>
 
       <label>
+        Category
+        <select
+          name="categoryId"
+          required
+          disabled={loadingCategories || !categories.length}
+          defaultValue=""
+          style={fieldStyle}
+        >
+          <option value="" disabled>
+            {loadingCategories
+              ? "Loading categories…"
+              : categories.length
+                ? "Select category"
+                : "No categories"}
+          </option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.category_name}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {categoryError && (
+        <p style={{ fontSize: "0.9rem", color: "crimson" }}>{categoryError}</p>
+      )}
+
+      <label>
         Shop name
         <input name="name" required style={fieldStyle} />
       </label>
@@ -121,9 +181,18 @@ export function AddShopForm() {
         <input name="location" required style={fieldStyle} />
       </label>
 
+      <label>
+        Description
+        <textarea
+          name="description"
+          rows={4}
+          style={{ ...fieldStyle, resize: "vertical" }}
+        />
+      </label>
+
       <button
         type="submit"
-        disabled={pending || !brands.length}
+        disabled={pending || !brands.length || !categories.length}
         style={buttonStyle}
       >
         {pending ? "Saving…" : "Create shop"}
