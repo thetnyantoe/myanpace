@@ -1,13 +1,11 @@
+// auth/callback/route.ts
 import { createClient } from "@/utils/supabase/server";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
-// Enable Google in Supabase Dashboard → Auth → Providers → Google
-// Add redirect URL: http://localhost:3000/auth/callback (and production equivalent)
-
 function redirectPathForRole(role: string) {
   if (role === "OWNER") return "/o";
-  return "/backendtestui";
+  return "/"; // Updated from "/backendtestui" to your new root/dashboard path
 }
 
 export async function GET(request: Request) {
@@ -16,7 +14,7 @@ export async function GET(request: Request) {
 
   if (!code) {
     return NextResponse.redirect(
-      `${origin}/backendtestui/login?error=missing_code`,
+      `${origin}/login?error=missing_code`, // Updated path
     );
   }
 
@@ -28,7 +26,7 @@ export async function GET(request: Request) {
 
   if (exchangeError) {
     return NextResponse.redirect(
-      `${origin}/backendtestui/login?error=${encodeURIComponent(exchangeError.message)}`,
+      `${origin}/login?error=${encodeURIComponent(exchangeError.message)}`, // Updated path
     );
   }
 
@@ -38,7 +36,7 @@ export async function GET(request: Request) {
 
   if (!user?.email) {
     return NextResponse.redirect(
-      `${origin}/backendtestui/login?error=no_user`,
+      `${origin}/login?error=no_user`, // Updated path
     );
   }
 
@@ -59,16 +57,16 @@ export async function GET(request: Request) {
       email: user.email,
       name: displayName,
       password: "OAUTH",
-      role: "USER",
+      role: "CUSTOMER",
     });
 
     if (insertError) {
       return NextResponse.redirect(
-        `${origin}/backendtestui/login?error=${encodeURIComponent(insertError.message)}`,
+        `${origin}/login?error=${encodeURIComponent(insertError.message)}`, // Updated path
       );
     }
 
-    return NextResponse.redirect(`${origin}${redirectPathForRole("USER")}`);
+    return NextResponse.redirect(`${origin}${redirectPathForRole("CUSTOMER")}`);
   }
 
   await supabase
@@ -76,6 +74,6 @@ export async function GET(request: Request) {
     .update({ email: user.email, name: displayName })
     .eq("id", user.id);
 
-  const role = existing.role ?? "USER";
+  const role = existing.role ?? "CUSTOMER";
   return NextResponse.redirect(`${origin}${redirectPathForRole(role)}`);
 }

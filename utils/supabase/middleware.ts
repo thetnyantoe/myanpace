@@ -51,8 +51,9 @@ export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const needsManager = pathname === "/m" || pathname.startsWith("/m/");
   const needsOwner = pathname === "/o" || pathname.startsWith("/o/");
+  const needsAdmin = pathname === "/a" || pathname.startsWith("/a/");
 
-  if (!needsManager && !needsOwner) {
+  if (!needsManager && !needsOwner && !needsAdmin) {
     return supabaseResponse;
   }
 
@@ -93,6 +94,15 @@ export async function updateSession(request: NextRequest) {
     .eq("id", authUser.id)
     .maybeSingle();
 
+  // If this is an admin-only route, require ADMIN role
+  if (needsAdmin) {
+    if (!userRow || userRow.role !== "ADMIN") {
+      return NextResponse.redirect(getRedirectUrl(request));
+    }
+    return supabaseResponse;
+  }
+
+  // /o/* — Supabase Auth only, role OWNER
   if (!userRow || userRow.role !== "OWNER") {
     return NextResponse.redirect(getRedirectUrl(request));
   }

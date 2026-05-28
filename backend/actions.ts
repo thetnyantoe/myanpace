@@ -116,6 +116,7 @@ export async function registerCustomer(
   }
 
   revalidatePath("/", "layout");
+  redirect("/login");
   return { ok: true, message: "Account created. You can now sign in." };
 }
 
@@ -147,6 +148,27 @@ export async function logout() {
   await clearSession();
   revalidatePath("/", "layout");
   redirect("/");
+}
+
+export async function login(formData: FormData): Promise<ActionResult> {
+  const identifier = String(formData.get("identifier") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+
+  if (!identifier || !password) {
+    return { ok: false, error: "Identifier and password are required." };
+  }
+
+  if (identifier.includes("@")) {
+    const userFormData = new FormData();
+    userFormData.set("email", identifier);
+    userFormData.set("password", password);
+    return loginUser(userFormData);
+  }
+
+  const managerFormData = new FormData();
+  managerFormData.set("name", identifier);
+  managerFormData.set("password", password);
+  return loginManager(managerFormData);
 }
 
 export async function addOwner(formData: FormData): Promise<ActionResult> {

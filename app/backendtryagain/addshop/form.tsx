@@ -10,7 +10,6 @@ type Category = { id: string; category_name: string };
 const initial: ActionResult | null = null;
 
 export function AddShopForm() {
-  const [ownerEmail, setOwnerEmail] = useState("");
   const [brands, setBrands] = useState<Brand[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(false);
@@ -23,28 +22,34 @@ export function AddShopForm() {
   );
 
   async function loadBrands() {
-    const email = ownerEmail.trim();
-    if (!email) {
-      setLoadError("Enter owner email first.");
-      setBrands([]);
-      return;
-    }
-
     setLoadingBrands(true);
     setLoadError(null);
     setBrands([]);
 
     const supabase = createClient();
 
-    const { data: user, error: userError } = await supabase
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user?.email) {
+      setLoadError(authError?.message ?? "Not signed in.");
+      setLoadingBrands(false);
+      return;
+    }
+
+    const email = user.email;
+
+    const { data: userRow, error: userError } = await supabase
       .from("User")
       .select("id")
       .eq("email", email)
       .eq("role", "OWNER")
       .maybeSingle();
 
-    if (userError || !user) {
-      setLoadError(userError?.message ?? "Owner not found for this email.");
+    if (userError || !userRow) {
+      setLoadError(userError?.message ?? "Owner not found for this account.");
       setLoadingBrands(false);
       return;
     }
@@ -52,7 +57,7 @@ export function AddShopForm() {
     const { data: brandRows, error: brandError } = await supabase
       .from("Brand")
       .select("id, name")
-      .eq("ownerId", user.id);
+      .eq("ownerId", userRow.id);
 
     setLoadingBrands(false);
 
@@ -97,25 +102,12 @@ export function AddShopForm() {
     };
   }, []);
 
+  useEffect(() => {
+    loadBrands();
+  }, []);
+
   return (
     <form action={formAction} style={{ display: "grid", gap: "0.75rem" }}>
-      <label>
-        Owner email
-        <input
-          type="email"
-          value={ownerEmail}
-          onChange={(e) => setOwnerEmail(e.target.value)}
-          style={fieldStyle}
-        />
-      </label>
-      <button
-        type="button"
-        onClick={loadBrands}
-        disabled={loadingBrands}
-        style={buttonStyle}
-      >
-        {loadingBrands ? "Loading…" : "Load my brands"}
-      </button>
       {loadError && (
         <p style={{ fontSize: "0.9rem", color: "crimson" }}>{loadError}</p>
       )}
@@ -130,7 +122,7 @@ export function AddShopForm() {
           style={fieldStyle}
         >
           <option value="" disabled>
-            {brands.length ? "Select brand" : "Load brands first"}
+            {brands.length ? "Select brand" : "Loading brands…"}
           </option>
           {brands.map((b) => (
             <option key={b.id} value={b.id}>
