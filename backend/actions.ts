@@ -13,6 +13,7 @@ export type ActionResult =
 
 function redirectPathForRole(role: string) {
   if (role === "OWNER") return "/o";
+  if (role === "ADMIN") return "/a";
   return "/";
 }
 
@@ -236,9 +237,23 @@ export async function addShop(formData: FormData): Promise<ActionResult> {
   const brandId = String(formData.get("brandId") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
   const categoryId = String(formData.get("categoryId") ?? "").trim();
+  const price = Number(formData.get("price") ?? 0);
+  const rawMenu = formData.get("menu");
+  let menu = "";
+  if (rawMenu instanceof File) {
+    const buffer = Buffer.from(await rawMenu.arrayBuffer());
+    const type = rawMenu.type || "image/png";
+    menu = `data:${type};base64,${buffer.toString("base64")}`;
+  } else {
+    menu = String(rawMenu ?? "").trim();
+  }
 
   if (!name || !password || !location || !brandId || !categoryId) {
     return { ok: false, error: "All fields are required." };
+  }
+
+  if (!price || price < 1 || price > 5) {
+    return { ok: false, error: "Price must be between 1 and 5." };
   }
 
   const supabase = createClient(await cookies());
@@ -250,6 +265,8 @@ export async function addShop(formData: FormData): Promise<ActionResult> {
     brandId,
     description,
     categoryId,
+    price,
+    menu,
   });
 
   if (error) {

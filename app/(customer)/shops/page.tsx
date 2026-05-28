@@ -49,7 +49,7 @@ export default async function Shops() {
                   }}
                 >
                   <Link
-                    href={`/backendtestui/shops/${s.id}`}
+                    href={`/shops/${s.id}`}
                     style={{ textDecoration: "none", color: "inherit" }}
                   >
                     <div

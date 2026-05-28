@@ -156,6 +156,25 @@ export function AddShopForm() {
         </select>
       </label>
 
+      <label>
+        Price
+        <select name="price" required defaultValue="" style={fieldStyle}>
+          <option value="" disabled>
+            Select price
+          </option>
+          {[1, 2, 3, 4, 5].map((value) => (
+            <option key={value} value={value}>
+              {value}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label>
+        Menu image
+        <input name="menu" type="file" accept="image/*" style={fieldStyle} />
+      </label>
+
       {categoryError && (
         <p style={{ fontSize: "0.9rem", color: "crimson" }}>{categoryError}</p>
       )}
