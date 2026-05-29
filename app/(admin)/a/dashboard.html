@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyanPace Admin Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        bgMain: '#f3f4f5',
+                        bgSurface: '#d6d6d5',
+                        textMuted: '#949492',
+                        brandPrimary: '#1d2846',
+                    },
+                    fontFamily: { sans: ['Jost', 'sans-serif'] },
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Jost', sans-serif; background-color: #f3f4f5; margin: 0; overflow: hidden; }
+        
+        #sidebar {
+            transition: width 0.4s cubic-bezier(0.2, 0, 0, 1);
+            min-width: 90px;
+            max-width: 400px;
+            width: 280px; 
+        }
+
+        #sidebar.is-dragging {
+            transition: none; 
+        }
+        
+        .sidebar-content {
+            white-space: nowrap;
+            overflow: hidden;
+            transition: opacity 0.3s ease, margin 0.4s ease;
+            opacity: 1;
+        }
+
+        #sidebar.collapsed {
+            width: 90px !important; 
+        }
+
+        #sidebar.collapsed .sidebar-content {
+            opacity: 0;
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+            display: none; 
+        }
+
+        .nav-item.active {
+            background-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .nav-item:hover:not(.active) {
+            background-color: rgba(255, 255, 255, 0.05);
+        }
+
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        #resizer {
+            width: 6px;
+            height: 100%;
+            position: absolute;
+            right: 0;
+            top: 0;
+            cursor: col-resize;
+            z-index: 100;
+        }
+        
+        #resizer:hover, #resizer.active {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+    </style>
+</head>
+<body class="flex h-screen w-full antialiased text-brandPrimary">
+
+    <aside id="sidebar" class="bg-brandPrimary text-white h-full flex flex-col shrink-0 shadow-2xl relative z-20 border-r border-brandPrimary/20">
+        
+        <div class="h-20 px-5 flex items-center border-b border-white/10 shrink-0">
+            <div class="flex items-center gap-3 overflow-hidden w-full">
+                <div class="w-12 h-12 bg-white text-brandPrimary rounded-xl flex items-center justify-center font-bold text-xl shadow-md shrink-0">
+                    MP
+                </div>
+                <span class="sidebar-content font-bold text-2xl tracking-tight text-white flex-1 min-w-0 truncate">MyanPace</span>
+            </div>
+        </div>
+
+        <div id="resizer"></div>
+
+        <button onclick="toggleSidebar()" class="absolute -right-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white text-brandPrimary border border-bgSurface flex items-center justify-center shadow-md hover:bg-bgSurface transition-colors z-[110]">
+            <i id="toggleIcon" class="fa-solid fa-chevron-left text-sm transition-transform duration-300"></i>
+        </button>
+
+        <nav class="flex-1 overflow-y-auto hide-scrollbar py-6 px-3 flex flex-col gap-2">
+            <p class="sidebar-content text-[10px] font-bold text-white/50 uppercase tracking-widest px-3 mb-2">Main Menu</p>
+            
+            <button onclick="navigate('Overview', this)" class="nav-item active w-full flex items-center px-4 py-3.5 rounded-xl transition-all text-left group" title="Overview">
+                <div class="w-7 flex justify-center shrink-0">
+                    <i class="fa-solid fa-chart-pie text-xl text-white/80 group-hover:text-white transition-colors"></i>
+                </div>
+                <span class="sidebar-content ml-4 font-medium text-sm text-white/90 group-hover:text-white transition-colors truncate">Overview</span>
+            </button>
+
+            <button onclick="navigate('Users', this)" class="nav-item w-full flex items-center px-4 py-3.5 rounded-xl transition-all text-left group" title="Users">
+                <div class="w-7 flex justify-center shrink-0">
+                    <i class="fa-solid fa-users text-xl text-white/80 group-hover:text-white transition-colors"></i>
+                </div>
+                <span class="sidebar-content ml-4 font-medium text-sm text-white/90 group-hover:text-white transition-colors truncate">Users</span>
+            </button>
+
+            <button onclick="navigate('Add Owner', this)" class="nav-item w-full flex items-center px-4 py-3.5 rounded-xl transition-all text-left group" title="Add Owner">
+                <div class="w-7 flex justify-center shrink-0">
+                    <i class="fa-solid fa-user-plus text-xl text-white/80 group-hover:text-white transition-colors"></i>
+                </div>
+                <span class="sidebar-content ml-4 font-medium text-sm text-white/90 group-hover:text-white transition-colors truncate">Add Owner</span>
+            </button>
+
+            <button onclick="navigate('Settings', this)" class="nav-item w-full flex items-center px-4 py-3.5 rounded-xl transition-all text-left group mt-auto" title="Settings">
+                <div class="w-7 flex justify-center shrink-0">
+                    <i class="fa-solid fa-gear text-xl text-white/80 group-hover:text-white transition-colors"></i>
+                </div>
+                <span class="sidebar-content ml-4 font-medium text-sm text-white/90 group-hover:text-white transition-colors truncate">Settings</span>
+            </button>
+        </nav>
+
+        <div class="p-4 border-t border-white/10 bg-black/10 shrink-0">
+            <div class="flex items-center gap-3 mb-4 overflow-hidden px-2">
+                <div class="w-10 h-10 rounded-full bg-white/20 border border-white/30 flex items-center justify-center shrink-0 overflow-hidden shadow-sm">
+                    <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSnMSq7jDv3F9bo02ZHgtC6LdSuR4cKyNFPUw&s" alt="Admin" class="w-full h-full object-cover">
+                </div>
+                <div class="sidebar-content flex-1 min-w-0">
+                    <p class="text-sm font-bold text-white leading-tight truncate">System Admin</p>
+                    <p class="text-[10px] font-medium text-white/60 uppercase tracking-wider mt-0.5 truncate">Super Admin</p>
+                    <p class="text-[11px] text-white/40 truncate mt-0.5">admin@myanpace.com</p>
+                </div>
+            </div>
+            
+            <button class="w-full flex items-center justify-center gap-3 bg-white/10 hover:bg-red-500/80 text-white py-3.5 rounded-xl transition-colors group" title="Sign Out">
+                <i class="fa-solid fa-arrow-right-from-bracket shrink-0 group-hover:translate-x-1 transition-transform text-lg"></i>
+                <span class="sidebar-content font-bold text-sm">Sign Out</span>
+            </button>
+        </div>
+    </aside>
+
+    <main class="flex-1 flex flex-col h-full bg-bgMain relative overflow-hidden z-10">
+        
+        <header class="h-20 px-8 flex items-center justify-between border-b border-bgSurface bg-white/50 backdrop-blur-md shrink-0">
+            <h1 id="pageTitle" class="text-2xl font-bold text-brandPrimary tracking-tight transition-all">Overview</h1>
+            
+            <div class="flex items-center gap-4">
+                <button class="w-10 h-10 rounded-full bg-white border border-bgSurface flex items-center justify-center text-textMuted hover:text-brandPrimary transition-colors relative shadow-sm">
+                    <i class="fa-regular fa-bell"></i>
+                    <span class="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
+                </button>
+                <div class="text-right hidden sm:block">
+                    <p class="text-xs font-bold text-brandPrimary">May 29, 2026</p>
+                    <p class="text-[10px] text-textMuted font-medium uppercase tracking-widest">Yangon Time</p>
+                </div>
+            </div>
+        </header>
+
+        <div class="flex-1 overflow-y-auto p-8 relative">
+            <div id="contentWorkspace" class="w-full h-full border-2 border-dashed border-bgSurface rounded-3xl flex flex-col items-center justify-center bg-white/40 text-center p-8 animate-[fadeIn_0.3s_ease-out]">
+                <div class="w-20 h-20 bg-white rounded-2xl shadow-sm border border-bgSurface flex items-center justify-center mb-6 text-brandPrimary/20">
+                    <i id="workspaceIcon" class="fa-solid fa-chart-pie text-4xl"></i>
+                </div>
+                <h2 id="workspaceTitle" class="text-xl font-bold text-brandPrimary mb-2">Overview Area</h2>
+                <p class="text-textMuted text-sm max-w-sm"></p>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        const sidebar = document.getElementById('sidebar');
+        const toggleIcon = document.getElementById('toggleIcon');
+        const resizer = document.getElementById('resizer');
+        
+        let isCollapsed = false;
+        let isDragging = false;
+        let expandedWidth = 280; 
+
+        function toggleSidebar() {
+            isCollapsed = !isCollapsed;
+            sidebar.style.transition = 'width 0.4s cubic-bezier(0.2, 0, 0, 1)'; 
+
+            if (isCollapsed) {
+                sidebar.classList.add('collapsed');
+                sidebar.style.width = '90px';
+                toggleIcon.classList.remove('fa-chevron-left');
+                toggleIcon.classList.add('fa-chevron-right');
+            } else {
+                if (expandedWidth < 200) expandedWidth = 280;
+                sidebar.classList.remove('collapsed');
+                sidebar.style.width = `${expandedWidth}px`;
+                toggleIcon.classList.remove('fa-chevron-right');
+                toggleIcon.classList.add('fa-chevron-left');
+                setTimeout(() => {
+                   const contents = document.querySelectorAll('.sidebar-content');
+                   contents.forEach(c => c.style.display = '');
+                }, 10);
+            }
+            
+            setTimeout(() => {
+                sidebar.style.transition = '';
+            }, 400);
+        }
+
+        resizer.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            sidebar.classList.add('is-dragging');
+            resizer.classList.add('active');
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none'; 
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            
+            let newWidth = e.clientX;
+            
+            if (newWidth < 90) newWidth = 90;
+            if (newWidth > 400) newWidth = 400;
+
+            sidebar.style.width = `${newWidth}px`;
+            
+            if (newWidth <= 120) {
+                if(!isCollapsed) {
+                     isCollapsed = true;
+                     sidebar.classList.add('collapsed');
+                     toggleIcon.classList.remove('fa-chevron-left');
+                     toggleIcon.classList.add('fa-chevron-right');
+                }
+            } else {
+                expandedWidth = newWidth;
+                if(isCollapsed) {
+                     isCollapsed = false;
+                     sidebar.classList.remove('collapsed');
+                     toggleIcon.classList.remove('fa-chevron-right');
+                     toggleIcon.classList.add('fa-chevron-left');
+                     const contents = document.querySelectorAll('.sidebar-content');
+                     contents.forEach(c => c.style.display = '');
+                }
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+                sidebar.classList.remove('is-dragging');
+                resizer.classList.remove('active');
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                
+                let currentWidth = parseInt(sidebar.style.width);
+                if (currentWidth <= 120) {
+                     isCollapsed = true;
+                     sidebar.style.transition = 'width 0.3s ease';
+                     sidebar.style.width = '90px';
+                     setTimeout(() => sidebar.style.transition = '', 300);
+                } else {
+                     isCollapsed = false;
+                     expandedWidth = currentWidth;
+                }
+            }
+        });
+
+        function navigate(pageName, btnElement) {
+            const allNavItems = document.querySelectorAll('.nav-item');
+            allNavItems.forEach(item => {
+                item.classList.remove('active');
+            });
+            
+            btnElement.classList.add('active');
+
+            document.getElementById('pageTitle').innerText = pageName;
+            document.getElementById('workspaceTitle').innerText = pageName + ' Area';
+            
+            const iconEl = document.getElementById('workspaceIcon');
+            if (pageName === 'Overview') iconEl.className = 'fa-solid fa-chart-pie text-4xl';
+            else if (pageName === 'Users') iconEl.className = 'fa-solid fa-users text-4xl';
+            else if (pageName === 'Add Owner') iconEl.className = 'fa-solid fa-user-plus text-4xl';
+            else if (pageName === 'Settings') iconEl.className = 'fa-solid fa-gear text-4xl';
+
+            const workspace = document.getElementById('contentWorkspace');
+            workspace.style.animation = 'none';
+            workspace.offsetHeight; 
+            workspace.style.animation = 'fadeIn 0.3s ease-out forwards';
+        }
+    </script>
+</body>
+</html>

@@ -4,14 +4,6 @@
   --background: #ffffff;
   --foreground: #171717;
 }
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
 @media (prefers-color-scheme: light) {
   :root {
     --background: #0a0a0a;
@@ -27,4 +19,33 @@ body {
 
 .jost {
   font-family: var(--font-jostFont);
+}
+
+@theme {
+  --color-bgMain: #f3f4f5;
+  --color-bgSurface: #d6d6d5;
+  --color-textMuted: #949492;
+  --color-brandPrimary: #1d2846;
+  --animate-slide-up: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  --animate-fade-in: fadeIn 0.3s ease-out forwards;
+
+  @keyframes slideUp {
+    0% {
+      transform: translateY(20px);
+      opacity: 0;
+    }
+    100% {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes fadeIn {
+    0% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 1;
+    }
+  }
 }

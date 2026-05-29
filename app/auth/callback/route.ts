@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 
 function redirectPathForRole(role: string) {
   if (role === "OWNER") return "/o";
-  return "/"; // Updated from "/backendtestui" to your new root/dashboard path
+  return "/";
 }
 
 export async function GET(request: Request) {
@@ -13,9 +13,7 @@ export async function GET(request: Request) {
   const code = searchParams.get("code");
 
   if (!code) {
-    return NextResponse.redirect(
-      `${origin}/login?error=missing_code`, // Updated path
-    );
+    return NextResponse.redirect(`${origin}/login?error=missing_code`);
   }
 
   const cookieStore = await cookies();
@@ -26,7 +24,7 @@ export async function GET(request: Request) {
 
   if (exchangeError) {
     return NextResponse.redirect(
-      `${origin}/login?error=${encodeURIComponent(exchangeError.message)}`, // Updated path
+      `${origin}/login?error=${encodeURIComponent(exchangeError.message)}`,
     );
   }
 

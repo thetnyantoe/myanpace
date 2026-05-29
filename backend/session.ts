@@ -3,7 +3,6 @@ import { cookies } from "next/headers";
 
 export const SESSION_COOKIE = "backendtestui_session";
 
-/** Manager-only custom session (Shop login). Owners/customers use Supabase Auth cookies. */
 export type ShopSession = { kind: "shop"; id: string };
 
 export type Profile = {

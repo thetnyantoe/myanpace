@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { ProfileBar } from "./components/profile";
+import NavBar from "./components/navbar";
+import { getProfile } from "@/backend/session"; // Import your server profile fetcher
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -24,17 +25,22 @@ export const metadata: Metadata = {
   description: "Smart Queue & Ticketing System",
 };
 
-export default function RootLayout({
+// 1. Turned this into an async function
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // 2. Fetch the session profile on the server side securely
+  const profile = await getProfile();
+
   return (
     <html lang="en">
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${jost.variable} antialiased`}
       >
-        <ProfileBar />
+        {/* 3. Pass the fetched profile down as 'initialUser' */}
+        <NavBar initialUser={profile} />
         {children}
       </body>
     </html>
