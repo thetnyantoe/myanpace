@@ -153,6 +153,28 @@ export default function ShopBrowser({
     }
   }, []);
 
+  // ── REGISTER SERVICE WORKER ON MOUNT (mirrors index.html window load) ────
+  useEffect(() => {
+    if (typeof window === "undefined" || !("serviceWorker" in navigator))
+      return;
+
+    navigator.serviceWorker
+      .register("/sw.js")
+      .catch((e) => console.warn("SW registration failed:", e));
+
+    // Relay sound messages sent by the SW when a push arrives in background
+    const onSwMessage = (e: MessageEvent) => {
+      if (e.data?.type === "PLAY_NOTIFICATION_SOUND") {
+        playSound(e.data.notificationType);
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", onSwMessage);
+
+    return () => {
+      navigator.serviceWorker.removeEventListener("message", onSwMessage);
+    };
+  }, []);
+
   // Fetch real-time Supabase tickets and subscribe to changes
   useEffect(() => {
     const supabase = createClient();
@@ -595,11 +617,15 @@ export default function ShopBrowser({
     if (typeof window === "undefined") return;
     if (!("Notification" in window) || !("PushManager" in window)) return;
 
-    try {
-      const perm = await Notification.requestPermission();
-      if (perm !== "granted") return;
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") return;
 
+    try {
+      // Register the SW (idempotent — safe to call even if already registered)
+      await navigator.serviceWorker.register("/sw.js");
+      // Wait until the SW is fully active and controlling the page
       const reg = await navigator.serviceWorker.ready;
+
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlB64ToUint8Array(VAPID_PUBLIC_KEY),
@@ -611,7 +637,8 @@ export default function ShopBrowser({
         .update({ subscription: sub.toJSON() })
         .eq("id", tokenId);
 
-      const shopName = dbShops.find((s) => s.id === shopId)?.name || "the shop";
+      const shopName =
+        dbShops.find((s) => s.id === shopId)?.name || "the shop";
 
       if (position === 1) {
         await sendPush(
@@ -641,8 +668,9 @@ export default function ShopBrowser({
     body: string,
     type = "generic",
   ) => {
+    if (!subscription) return;
     try {
-      await fetch(PUSH_URL, {
+      const res = await fetch(PUSH_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -650,6 +678,7 @@ export default function ShopBrowser({
         },
         body: JSON.stringify({ subscription, title, body, type }),
       });
+      if (!res.ok) console.error("Push failed:", await res.text());
     } catch (e) {
       console.warn("Push dispatch error", e);
     }

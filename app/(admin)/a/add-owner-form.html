@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyanPace Admin - Add Owner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        bgMain: '#f3f4f5',
+                        bgSurface: '#d6d6d5',
+                        textMuted: '#949492',
+                        brandPrimary: '#1d2846',
+                        inputBg: '#fcfcfc',
+                    },
+                    fontFamily: { sans: ['Jost', 'sans-serif'] },
+                    boxShadow: {
+                        'soft': '0 10px 40px -10px rgba(29,40,70,0.08)',
+                        'modal': '0 25px 50px -12px rgba(29,40,70,0.25), 0 0 0 1px rgba(29,40,70,0.05)',
+                        'input': '0 2px 4px rgba(0,0,0,0.02) inset',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Jost', sans-serif; background-color: #f3f4f5; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        input {
+            transition: all 0.2s ease-in-out;
+        }
+    </style>
+</head>
+<body class="p-6 lg:p-8 antialiased text-brandPrimary min-h-screen flex flex-col items-center justify-center relative">
+
+    <button onclick="openOwnerModal()" class="inline-flex items-center gap-3 px-8 py-4 rounded-[1.25rem] bg-brandPrimary text-white text-sm font-bold shadow-soft hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 active:scale-95 group">
+        <div class="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center group-hover:bg-white/30 transition-colors">
+            <i data-lucide="user-plus" class="w-3.5 h-3.5"></i>
+        </div>
+        Add New Owner
+    </button>
+
+    <div id="addOwnerModal" class="fixed inset-0 z-50 hidden flex-col items-center justify-center sm:p-6 lg:p-12 overflow-hidden pointer-events-none">
+        <div id="ownerModalBackdrop" class="absolute inset-0 bg-brandPrimary/30 opacity-0 transition-all duration-300" onclick="closeOwnerModal()"></div>
+        
+        <div class="bg-white w-full h-full sm:h-auto sm:max-h-full sm:max-w-xl sm:rounded-[2rem] shadow-modal flex flex-col relative overflow-hidden opacity-0 pointer-events-auto transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)] transform translate-y-8 scale-95" id="ownerModalContainer">
+            
+            <div class="px-8 py-6 sm:px-10 sm:py-8 border-b border-bgSurface/40 flex items-center justify-between shrink-0 bg-white z-20 relative overflow-hidden">
+                <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brandPrimary/80 to-brandPrimary/20"></div>
+                <div class="flex items-center gap-5">
+                    <div class="w-12 h-12 rounded-2xl bg-bgMain border border-bgSurface/60 flex items-center justify-center text-brandPrimary shadow-sm relative overflow-hidden group">
+                        <div class="absolute inset-0 bg-brandPrimary/5 transform translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+                        <i data-lucide="shield-check" class="w-6 h-6 relative z-10"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-xl sm:text-2xl font-bold text-brandPrimary tracking-tight leading-none mb-1.5">Add Owner / Partner</h2>
+                        <p class="text-xs font-medium text-textMuted leading-snug">Creates an Auth user (OWNER role) & Brand.</p>
+                    </div>
+                </div>
+                <button onclick="closeOwnerModal()" class="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-bgMain text-textMuted hover:text-brandPrimary transition-colors active:scale-95 border border-transparent hover:border-bgSurface/60 bg-white shadow-sm shrink-0">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto hide-scrollbar bg-white">
+                <form id="ownerForm" onsubmit="handleOwnerSubmit(event)" class="p-8 sm:px-10 sm:py-8 flex flex-col gap-6">
+                    
+                    <div class="flex flex-col gap-2">
+                        <label for="ownerName" class="text-[10px] font-bold text-textMuted uppercase tracking-[0.15em] ml-1">Full Name</label>
+                        <div class="relative group">
+                            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                <i data-lucide="user" class="w-4 h-4 text-textMuted group-focus-within:text-brandPrimary transition-colors"></i>
+                            </div>
+                            <input type="text" id="ownerName" required placeholder="e.g., U Kyaw Zayar" class="w-full bg-inputBg border border-bgSurface/80 rounded-xl py-3.5 pl-11 pr-4 text-sm font-semibold text-brandPrimary placeholder:text-textMuted/50 focus:bg-white focus:outline-none focus:border-brandPrimary/50 focus:ring-4 focus:ring-brandPrimary/5 shadow-input">
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col gap-2">
+                        <label for="ownerEmail" class="text-[10px] font-bold text-textMuted uppercase tracking-[0.15em] ml-1">Email Address</label>
+                        <div class="relative group">
+                            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                <i data-lucide="mail" class="w-4 h-4 text-textMuted group-focus-within:text-brandPrimary transition-colors"></i>
+                            </div>
+                            <input type="email" id="ownerEmail" required placeholder="partner@example.com" class="w-full bg-inputBg border border-bgSurface/80 rounded-xl py-3.5 pl-11 pr-4 text-sm font-semibold text-brandPrimary placeholder:text-textMuted/50 focus:bg-white focus:outline-none focus:border-brandPrimary/50 focus:ring-4 focus:ring-brandPrimary/5 shadow-input">
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col gap-2">
+                        <label for="ownerPassword" class="text-[10px] font-bold text-textMuted uppercase tracking-[0.15em] ml-1">Secure Password</label>
+                        <div class="relative group">
+                            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                <i data-lucide="lock" class="w-4 h-4 text-textMuted group-focus-within:text-brandPrimary transition-colors"></i>
+                            </div>
+                            <input type="password" id="ownerPassword" required placeholder="Assign an password" class="w-full bg-inputBg border border-bgSurface/80 rounded-xl py-3.5 pl-11 pr-12 text-sm font-mono font-bold text-brandPrimary placeholder:text-textMuted/50 focus:bg-white focus:outline-none focus:border-brandPrimary/50 focus:ring-4 focus:ring-brandPrimary/5 shadow-input tracking-widest">
+                            <button type="button" onclick="toggleOwnerPassword()" class="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center text-textMuted hover:text-brandPrimary hover:bg-bgMain rounded-lg transition-colors focus:outline-none">
+                                <i data-lucide="eye" id="ownerEyeIcon" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col gap-2 pt-2 border-t border-bgSurface/40 mt-1">
+                        <label for="brandName" class="text-[10px] font-bold text-brandPrimary uppercase tracking-[0.15em] ml-1">Brand Name Configuration</label>
+                        <div class="relative group">
+                            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                <i data-lucide="briefcase" class="w-4 h-4 text-textMuted group-focus-within:text-brandPrimary transition-colors"></i>
+                            </div>
+                            <input type="text" id="brandName" required placeholder="e.g., Heritage Tea House Group" class="w-full bg-inputBg border border-bgSurface/80 rounded-xl py-3.5 pl-11 pr-4 text-sm font-semibold text-brandPrimary placeholder:text-textMuted/50 focus:bg-white focus:outline-none focus:border-brandPrimary/50 focus:ring-4 focus:ring-brandPrimary/5 shadow-input">
+                        </div>
+                    </div>
+
+                </form>
+            </div>
+
+            <div class="px-8 py-5 sm:px-10 sm:py-6 border-t border-bgSurface/40 bg-bgMain/20 flex flex-col-reverse sm:flex-row items-center justify-between shrink-0 z-20 gap-3 sm:gap-0">
+                <div class="flex items-center gap-3 w-full sm:w-auto justify-end">
+                    <button type="button" onclick="closeOwnerModal()" class="px-6 py-3 rounded-xl bg-white border border-bgSurface text-brandPrimary text-sm font-bold hover:bg-bgMain transition-colors shadow-sm active:scale-95 flex-1 sm:flex-none">
+                        Cancel
+                    </button>
+                    <button type="button" onclick="document.getElementById('ownerForm').requestSubmit()" class="inline-flex items-center justify-center gap-2.5 px-6 py-3 rounded-xl bg-brandPrimary text-white text-sm font-bold shadow-soft hover:shadow-lg hover:-translate-y-0.5 transition-all active:scale-95 flex-1 sm:flex-none">
+                        <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+                        Create Owner & Brand
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toastNotification" class="fixed bottom-8 left-1/2 -translate-x-1/2 bg-brandPrimary text-white px-6 py-4 rounded-xl text-sm font-bold shadow-[0_20px_40px_-10px_rgba(29,40,70,0.4)] z-[100] transition-all duration-400 transform translate-y-24 opacity-0 flex items-center gap-3 border border-white/10 min-w-[320px] justify-center">
+        <div class="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center shrink-0">
+            <i data-lucide="check" class="w-3.5 h-3.5 text-green-400"></i>
+        </div>
+        <span class="tracking-wide">Owner & Brand created successfully.</span>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        const ownerModal = document.getElementById('addOwnerModal');
+        const ownerModalBackdrop = document.getElementById('ownerModalBackdrop');
+        const ownerModalContainer = document.getElementById('ownerModalContainer');
+        const ownerPasswordInput = document.getElementById('ownerPassword');
+        const ownerEyeIcon = document.getElementById('ownerEyeIcon');
+
+        function openOwnerModal() {
+            ownerModal.classList.remove('hidden');
+            ownerModal.classList.add('flex');
+            
+            setTimeout(() => {
+                ownerModal.classList.add('pointer-events-auto');
+                ownerModalBackdrop.classList.add('backdrop-blur-sm', 'opacity-100');
+                ownerModalBackdrop.classList.remove('opacity-0');
+                
+                ownerModalContainer.classList.remove('opacity-0', 'translate-y-8', 'scale-95');
+                ownerModalContainer.classList.add('opacity-100', 'translate-y-0', 'scale-100');
+            }, 10);
+            
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeOwnerModal() {
+            ownerModal.classList.remove('pointer-events-auto');
+            ownerModalBackdrop.classList.remove('backdrop-blur-sm', 'opacity-100');
+            ownerModalBackdrop.classList.add('opacity-0');
+            
+            ownerModalContainer.classList.add('opacity-0', 'translate-y-8', 'scale-95');
+            ownerModalContainer.classList.remove('opacity-100', 'translate-y-0', 'scale-100');
+            
+            setTimeout(() => {
+                ownerModal.classList.add('hidden');
+                ownerModal.classList.remove('flex');
+                document.getElementById('ownerForm').reset();
+                ownerPasswordInput.type = 'password';
+                ownerEyeIcon.setAttribute('data-lucide', 'eye');
+                lucide.createIcons();
+                document.body.style.overflow = '';
+            }, 400);
+        }
+
+        function toggleOwnerPassword() {
+            if (ownerPasswordInput.type === 'password') {
+                ownerPasswordInput.type = 'text';
+                ownerEyeIcon.setAttribute('data-lucide', 'eye-off');
+            } else {
+                ownerPasswordInput.type = 'password';
+                ownerEyeIcon.setAttribute('data-lucide', 'eye');
+            }
+            lucide.createIcons();
+        }
+
+        function handleOwnerSubmit(e) {
+            e.preventDefault();
+            
+            const submitBtn = e.target.querySelector('button[type="submit"]') || document.querySelector('#ownerModalContainer .bg-brandPrimary');
+            const originalHtml = submitBtn.innerHTML;
+            
+            // Simulating API Call
+            submitBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Processing...';
+            submitBtn.disabled = true;
+            lucide.createIcons();
+
+            setTimeout(() => {
+                submitBtn.innerHTML = originalHtml;
+                submitBtn.disabled = false;
+                lucide.createIcons();
+                
+                closeOwnerModal();
+                showSuccessToast();
+            }, 1200);
+        }
+
+        function showSuccessToast() {
+            const toast = document.getElementById('toastNotification');
+            
+            toast.classList.remove('translate-y-24', 'opacity-0');
+            toast.classList.add('translate-y-0', 'opacity-100');
+            
+            setTimeout(() => {
+                toast.classList.add('translate-y-24', 'opacity-0');
+                toast.classList.remove('translate-y-0', 'opacity-100');
+            }, 3500);
+        }
+    </script>
+</body>
+</html>

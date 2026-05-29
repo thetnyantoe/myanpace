@@ -92,7 +92,7 @@ export default function HomeClient({ initialShops, userId }: HomeClientProps) {
       <main className="flex-1 flex flex-col transition-opacity duration-300 w-full relative">
         <section
           id="heroSection"
-          className="pt-12 lg:pt-40 pb-12 lg:pb-24 px-6 max-w-[1300px] mx-auto w-full flex flex-col lg:flex-row items-center justify-between relative overflow-visible gap-12 lg:gap-8 animate-slide-up"
+          className="pt-[80px] lg:pt-40 pb-12 lg:pb-24 px-6 max-w-[1300px] mx-auto w-full flex flex-col lg:flex-row items-center justify-between relative overflow-visible gap-12 lg:gap-8 animate-slide-up"
         >
           <div className="w-full lg:w-[45%] flex flex-col items-start text-left z-20">
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-bgSurface mb-6 shadow-sm bg-bgMain">

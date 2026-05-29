@@ -10,7 +10,6 @@ export default async function Shops() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // 2. Fetch the shop data
   const { data, error } = await supabase
     .from("Shop")
     .select(
@@ -28,6 +27,5 @@ export default async function Shops() {
 
   const shops = (data ?? []) as Array<any>;
 
-  // 3. Pass user?.id to the component (will be undefined if the user is a guest)
   return <ShopBrowser initialShops={shops} userId={user?.id} />;
 }

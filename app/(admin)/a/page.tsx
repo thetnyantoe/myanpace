@@ -1,18 +1,3 @@
-// import Link from "next/link";
-
-// export default function Admin() {
-//   return (
-//     <div>
-//       admin dashboard{" "}
-//       <Link href="a/addowner" className="underline jost text-xl">
-//         add-owner
-//       </Link>
-//       <Link href="a/addowner" className="underline text-xl">
-//         add-owner
-//       </Link>
-//     </div>
-//   );
-// }
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -25,6 +10,8 @@ import {
   Users,
   LogOut,
 } from "lucide-react";
+import UserTable from "./usertable";
+import AddOwner from "./addowner";
 
 export default function Admin() {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -53,21 +40,6 @@ export default function Admin() {
       icon: <UserPlus size={22} />,
     },
   ];
-
-  const getWorkspaceIcon = () => {
-    switch (activePage) {
-      case "Overview":
-        return <ChartPie size={42} />;
-      case "Users":
-        return <Users size={42} />;
-      case "Add Owner":
-        return <UserPlus size={42} />;
-      case "Settings":
-        return <UserPlus size={42} />;
-      default:
-        return <ChartPie size={42} />;
-    }
-  };
 
   const toggleSidebar = () => {
     if (isCollapsed) {
@@ -284,20 +256,20 @@ export default function Admin() {
 
         {/* CONTENT */}
         <div className="flex-1 overflow-y-auto p-8">
-          <div className="flex h-full w-full flex-col items-center justify-center rounded-[28px] border-2 border-dashed border-[#d6d6d5] bg-white/40 p-8 text-center">
-            <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-2xl border border-[#d6d6d5] bg-white text-[#1d2846]/20 shadow-sm">
-              {getWorkspaceIcon()}
+          {activePage === "Users" ? (
+            <UserTable />
+          ) : activePage === "Add Owner" ? (
+            <AddOwner />
+          ) : (
+            <div className="flex h-full w-full flex-col items-center justify-center rounded-[28px] border-2 border-dashed border-[#d6d6d5] bg-white/40 p-8 text-center">
+              <h2 className="mb-2 text-xl font-bold text-[#1d2846]">
+                {activePage} Area
+              </h2>
+              <p className="max-w-sm text-sm text-[#949492]">
+                This workspace is ready for your admin dashboard content.
+              </p>
             </div>
-
-            <h2 className="mb-2 text-xl font-bold text-[#1d2846]">
-              {activePage} Area
-            </h2>
-
-            <p className="max-w-sm text-sm text-[#949492]">
-              This workspace is ready for your admin dashboard content,
-              analytics, tables, forms, and management features.
-            </p>
-          </div>
+          )}
         </div>
       </main>
     </div>
