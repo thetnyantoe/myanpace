@@ -35,10 +35,6 @@ export default function Admin() {
       name: "Add Owner",
       icon: <UserPlus size={22} />,
     },
-    {
-      name: "Settings",
-      icon: <UserPlus size={22} />,
-    },
   ];
 
   const toggleSidebar = () => {
@@ -166,26 +162,6 @@ export default function Admin() {
               </button>
             );
           })}
-
-          {/* SETTINGS BOTTOM */}
-          <div className="mt-auto">
-            <button
-              onClick={() => setActivePage("Settings")}
-              className={`group flex w-full items-center rounded-xl px-4 py-3.5 text-left transition-all ${
-                activePage === "Settings" ? "bg-white/15" : "hover:bg-white/5"
-              }`}
-            >
-              <div className="flex w-7 shrink-0 justify-center text-white/80 transition group-hover:text-white">
-                <UserPlus size={22} />
-              </div>
-
-              {!isCollapsed && (
-                <span className="ml-4 truncate text-sm font-medium text-white/90 group-hover:text-white">
-                  Settings
-                </span>
-              )}
-            </button>
-          </div>
         </nav>
 
         {/* FOOTER */}

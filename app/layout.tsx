@@ -3,7 +3,9 @@ import localFont from "next/font/local";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import NavBar from "./components/navbar";
-import { getProfile } from "@/backend/session"; // Import your server profile fetcher
+import { getProfile } from "@/backend/session";
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -39,9 +41,9 @@ export default async function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${jost.variable} antialiased`}
       >
-        {/* 3. Pass the fetched profile down as 'initialUser' */}
         <NavBar initialUser={profile} />
         {children}
+        <ToastContainer />
       </body>
     </html>
   );

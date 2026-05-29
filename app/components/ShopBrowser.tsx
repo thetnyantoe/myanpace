@@ -12,13 +12,13 @@ import SlidersIcon from "@/public/icons/sliders";
 import FilterIcon from "@/public/icons/filter";
 import CrossIcon from "@/public/icons/cross";
 
-// Constants matching the index.html/sw.js timer windows
 const CALL_WINDOW_MS = 3 * 60 * 1000; // 3 minutes before warning
 const TOTAL_WINDOW_MS = 4 * 60 * 1000; // 4 minutes total before auto-cancel
 
 interface ShopItem {
   id: number | string;
   name: string;
+  categoryId: number | string | null;
   category: string;
   queue: number;
   wait: number;
@@ -42,6 +42,9 @@ export default function ShopBrowser({
   // Filters & UI states
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [filterOpenNow, setFilterOpenNow] = useState<boolean>(false);
+  const [categories, setCategories] = useState<
+    { id: number; category_name: string }[]
+  >([]);
   const [filterNearBy, setFilterNearBy] = useState<boolean>(false);
   const [filterFavorite, setFilterFavorite] = useState<boolean>(false);
   const [sort, setSort] = useState<string>("a-z");
@@ -59,7 +62,22 @@ export default function ShopBrowser({
     new Set(),
   );
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  useEffect(() => {
+    const supabase = createClient();
 
+    const fetchCategories = async () => {
+      const { data, error } = await supabase
+        .from("Category")
+        .select("id, category_name")
+        .order("category_name", { ascending: true });
+
+      if (!error && data) {
+        setCategories(data);
+      }
+    };
+
+    fetchCategories();
+  }, []);
   // ── REAL-TIME QUEUE STATES ────────────────────────────────────────────────
   const [tickets, setTickets] = useState<any[]>([]);
   const [myTokenIds, setMyTokenIds] = useState<string[]>([]);
@@ -349,6 +367,7 @@ export default function ShopBrowser({
       return {
         id: s.id,
         name: s.name || `Shop #${imageIndex}`,
+        categoryId: s.categoryId,
         type,
         category:
           categoryName ||
@@ -378,7 +397,10 @@ export default function ShopBrowser({
   const filteredAndSortedShops = useMemo(() => {
     let result = dbShops.filter((shop) => {
       if (filterFavorite && !favoriteIds.has(shop.id)) return false;
-      if (filterCategory !== "all" && shop.category !== filterCategory)
+      if (
+        filterCategory !== "all" &&
+        String(shop.categoryId) !== filterCategory
+      )
         return false;
       if (filterOpenNow && !shop.isOpen) return false;
       if (filterNearBy && shop.distance > 2.0) return false;
@@ -637,8 +659,7 @@ export default function ShopBrowser({
         .update({ subscription: sub.toJSON() })
         .eq("id", tokenId);
 
-      const shopName =
-        dbShops.find((s) => s.id === shopId)?.name || "the shop";
+      const shopName = dbShops.find((s) => s.id === shopId)?.name || "the shop";
 
       if (position === 1) {
         await sendPush(
@@ -989,9 +1010,11 @@ export default function ShopBrowser({
                     className="bg-white border border-bgSurface text-xs sm:text-sm font-bold text-brandPrimary outline-none cursor-pointer px-4 py-2.5 rounded-xl shadow-sm shrink-0"
                   >
                     <option value="all">All Categories</option>
-                    <option value="restaurant">Restaurants</option>
-                    <option value="cafe">Cafes & Bakeries</option>
-                    <option value="fastfood">Fast Casual</option>
+                    {categories.map((category) => (
+                      <option key={category.id} value={String(category.id)}>
+                        {category.category_name}
+                      </option>
+                    ))}
                   </select>
 
                   <button

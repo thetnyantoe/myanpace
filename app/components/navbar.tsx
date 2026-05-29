@@ -23,6 +23,7 @@ import {
   ArrowUp,
   Bot,
 } from "lucide-react";
+import { AiOverlay } from "./aioverlay";
 
 // Flexible type definition matching the data returned from your session file
 type NavBarProps = {
@@ -131,12 +132,6 @@ export default function NavBar({ initialUser }: NavBarProps) {
             >
               Support
             </Link>
-            <button
-              onClick={() => setAccountOpen(true)}
-              className="text-sm font-medium hover:text-[#d6d6d5] transition-colors"
-            >
-              Account
-            </button>
             <div className="w-px h-5 bg-white/20" />
             <button className="hover:text-[#d6d6d5] transition-colors">
               <Heart className="w-5 h-5" />
@@ -156,7 +151,7 @@ export default function NavBar({ initialUser }: NavBarProps) {
           {/* PaceAI Button */}
           <button
             onClick={() => setAiOpen(true)}
-            className="w-[60px] h-[60px] rounded-full bg-[#1d2846] relative overflow-hidden shadow-[0_4px_15px_rgba(29,40,70,0.3)] flex items-center justify-center group hover:scale-105 transition-all"
+            className="cursor-pointer w-[60px] h-[60px] rounded-full bg-[#1d2846] relative overflow-hidden shadow-[0_4px_15px_rgba(29,40,70,0.3)] flex items-center justify-center group hover:scale-105 transition-all"
           >
             <div className="absolute inset-0 animate-spin-slow bg-[conic-gradient(from_0deg,transparent_0%,rgba(255,255,255,0.05)_25%,transparent_50%,rgba(29,40,70,0.5)_75%,transparent_100%)]" />
             <div className="flex items-center gap-[2px] relative z-10">
@@ -257,13 +252,6 @@ export default function NavBar({ initialUser }: NavBarProps) {
             className="w-9 h-9 flex items-center justify-center text-[#1d2846]"
           >
             <Search className="w-5 h-5" />
-          </button>
-
-          <button
-            onClick={() => setMobileMenu(true)}
-            className="w-9 h-9 flex items-center justify-center text-[#1d2846]"
-          >
-            <Menu className="w-5 h-5" />
           </button>
         </div>
       </header>
@@ -424,117 +412,7 @@ export default function NavBar({ initialUser }: NavBarProps) {
         </div>
       )}
 
-      {/* AI Overlay */}
-      {aiOpen && (
-        <div className="fixed inset-0 z-[200] bg-[#f3f4f5]/80 backdrop-blur-xl flex flex-col">
-          <div className="w-full bg-white/60 backdrop-blur-lg border-b border-white/30 px-5 py-4 flex items-center justify-between shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-[2px] text-[#1d2846]">
-                {[1, 2, 3, 4].map((bar) => (
-                  <span
-                    key={bar}
-                    className="w-[3px] bg-[#1d2846] rounded-full animate-wave"
-                    style={{ height: `${10 + (bar % 2) * 6}px` }}
-                  />
-                ))}
-              </div>
-              <div>
-                <h3 className="font-bold text-lg text-[#1d2846]">
-                  PaceAI Interface
-                </h3>
-                <p className="text-[10px] uppercase tracking-[0.2em] text-[#1d2846]/70 font-medium">
-                  Intelligent Dining Assistant
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setAiOpen(false)}
-              className="w-10 h-10 rounded-full bg-white/50 border border-white/20 flex items-center justify-center"
-            >
-              <X className="w-5 h-5 text-[#1d2846]" />
-            </button>
-          </div>
-
-          <div className="flex-1 flex flex-col items-center justify-center px-6">
-            <div className="w-20 h-20 rounded-3xl bg-white/50 backdrop-blur-md border border-white/50 shadow-xl flex items-center justify-center mb-8">
-              <Bot className="w-9 h-9 text-[#1d2846]" />
-            </div>
-            <h2 className="text-4xl font-bold text-[#1d2846] text-center tracking-tight mb-4">
-              Call &quot;PacePace&quot; to Chat
-            </h2>
-            <p className="text-center text-[#1d2846]/80 font-medium max-w-2xl mb-10">
-              Type your message below to instruct our intelligent AI formally
-              with priority reservations, queue management, or customized dining
-              curation.
-            </p>
-
-            <div className="w-full max-w-2xl bg-white/60 backdrop-blur-lg border border-white/50 rounded-2xl p-2 flex items-center shadow-xl">
-              <div className="px-4 text-[#1d2846]/70">
-                <Mic className="w-5 h-5" />
-              </div>
-              <input
-                placeholder="Type your instruction or message..."
-                className="flex-1 bg-transparent outline-none py-4 text-[#1d2846] font-semibold placeholder:text-[#1d2846]/60"
-              />
-              <button className="w-12 h-12 rounded-xl bg-[#1d2846] text-white flex items-center justify-center">
-                <ArrowUp className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="flex flex-wrap justify-center gap-4 mt-8">
-              <div className="bg-white/50 backdrop-blur-md px-4 py-2 rounded-full border border-white/40 shadow-sm flex items-center gap-2 text-sm text-[#1d2846]">
-                <Mic className="w-4 h-4" /> Voice Active
-              </div>
-              <div className="bg-white/50 backdrop-blur-md px-4 py-2 rounded-full border border-white/40 shadow-sm flex items-center gap-2 text-sm text-[#1d2846]">
-                <Shield className="w-4 h-4" /> Secure Context
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Mobile Menu */}
-      {mobileMenu && (
-        <div className="fixed inset-0 z-[150] bg-black/40 min-[1130px]:hidden">
-          <div className="absolute right-0 top-0 h-full w-[300px] bg-white shadow-2xl p-6 flex flex-col">
-            <div className="flex items-center justify-between mb-10">
-              <h2 className="text-xl font-bold text-[#1d2846]">Menu</h2>
-              <button
-                onClick={() => setMobileMenu(false)}
-                className="w-10 h-10 rounded-xl bg-[#f3f4f5] flex items-center justify-center"
-              >
-                <X className="w-5 h-5 text-[#1d2846]" />
-              </button>
-            </div>
-            <div className="flex flex-col gap-5">
-              <Link
-                href="/shops"
-                className="text-[#1d2846] font-semibold text-lg"
-              >
-                Shops
-              </Link>
-              <Link
-                href="/token"
-                className="text-[#1d2846] font-semibold text-lg"
-              >
-                Token
-              </Link>
-              <Link
-                href="/community"
-                className="text-[#1d2846] font-semibold text-lg"
-              >
-                Community
-              </Link>
-              <Link
-                href="/support"
-                className="text-[#1d2846] font-semibold text-lg"
-              >
-                Support
-              </Link>
-            </div>
-          </div>
-        </div>
-      )}
+      <AiOverlay aiOpen={aiOpen} setAiOpen={setAiOpen} />
 
       <style jsx global>{`
         @keyframes wave {
