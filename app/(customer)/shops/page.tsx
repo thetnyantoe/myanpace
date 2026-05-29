@@ -1,6 +1,6 @@
 import { createClient } from "@/utils/supabase/server";
 import { cookies } from "next/headers";
-import ShopBrowser from "../../components/ShopBrowser";
+import ShopBrowser from "@/app/components/ShopBrowser";
 
 export default async function Shops() {
   const supabase = createClient(await cookies());

@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import BellIcon from "@/public/icons/bell";
 import CheckIcon from "@/public/icons/check";
 import SpinnerIcon from "@/public/icons/spinner";
-import ShopBrowser from "./components/ShopBrowser";
+import ShopBrowser from "@/app/components/ShopBrowser";
 
 interface HomeClientProps {
   initialShops: any[];

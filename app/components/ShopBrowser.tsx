@@ -1,24 +1,42 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createClient } from "@/utils/supabase/client";
-import HeartIcon from "@/public/icons/heart";
-import ClockIcon from "@/public/icons/clock";
-import UsersIcon from "@/public/icons/users";
-import TicketIcon from "@/public/icons/ticket";
-import LocationIcon from "@/public/icons/location";
-import QrIcon from "@/public/icons/qr";
-import SlidersIcon from "@/public/icons/sliders";
-import FilterIcon from "@/public/icons/filter";
-import CrossIcon from "@/public/icons/cross";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import {
+  Heart,
+  Clock as ClockIcon,
+  Users as UsersIcon,
+  Ticket as TicketIcon,
+  MapPin as LocationIcon,
+  QrCode as QrIcon,
+  SlidersHorizontal as SlidersIcon,
+  Filter as FilterIcon,
+  X as CrossIcon,
+} from "lucide-react";
 
-const CALL_WINDOW_MS = 3 * 60 * 1000; // 3 minutes before warning
+// Initialize Supabase directly for the preview environment
+const supabaseUrl = "https://apjvnlxeqjvsmxvqtqqk.supabase.co";
+const supabaseAnonKey =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwanZubHhlcWp2c214dnF0cXFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3ODMxNDcsImV4cCI6MjA5NTM1OTE0N30.N0s2R_zhrzmiJ-3UGBiUnO6tzS6cgGJwEVklZeJWu8g";
+const supabase = createSupabaseClient(supabaseUrl, supabaseAnonKey);
+const createClient = () => supabase;
+
+// Icon wrapper to handle the custom isFav prop
+const HeartIcon = ({
+  isFav,
+  className,
+}: {
+  isFav?: boolean;
+  className?: string;
+}) => <Heart className={className} fill={isFav ? "currentColor" : "none"} />;
+
+// Constants matching the timer windows
+const CALL_WINDOW_MS = 3 * 60 * 1000; // 3 minutes before warning popup
 const TOTAL_WINDOW_MS = 4 * 60 * 1000; // 4 minutes total before auto-cancel
 
 interface ShopItem {
   id: number | string;
   name: string;
-  categoryId: number | string | null;
   category: string;
   queue: number;
   wait: number;
@@ -42,9 +60,6 @@ export default function ShopBrowser({
   // Filters & UI states
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [filterOpenNow, setFilterOpenNow] = useState<boolean>(false);
-  const [categories, setCategories] = useState<
-    { id: number; category_name: string }[]
-  >([]);
   const [filterNearBy, setFilterNearBy] = useState<boolean>(false);
   const [filterFavorite, setFilterFavorite] = useState<boolean>(false);
   const [sort, setSort] = useState<string>("a-z");
@@ -62,22 +77,7 @@ export default function ShopBrowser({
     new Set(),
   );
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  useEffect(() => {
-    const supabase = createClient();
 
-    const fetchCategories = async () => {
-      const { data, error } = await supabase
-        .from("Category")
-        .select("id, category_name")
-        .order("category_name", { ascending: true });
-
-      if (!error && data) {
-        setCategories(data);
-      }
-    };
-
-    fetchCategories();
-  }, []);
   // ── REAL-TIME QUEUE STATES ────────────────────────────────────────────────
   const [tickets, setTickets] = useState<any[]>([]);
   const [myTokenIds, setMyTokenIds] = useState<string[]>([]);
@@ -89,20 +89,35 @@ export default function ShopBrowser({
   const [selectedTicketForQR, setSelectedTicketForQR] = useState<any | null>(
     null,
   );
+
+  // Warning Modal (triggered at 3 minutes)
+  const [isWarningModalOpen, setIsWarningModalOpen] = useState(false);
+  const [warningTokenId, setWarningTokenId] = useState<string | null>(null);
+
+  // Expired Modal (triggered at 4 minutes)
   const [isExpiredModalOpen, setIsExpiredModalOpen] = useState(false);
   const [expiredTokenId, setExpiredTokenId] = useState<string | null>(null);
 
-  // Tracks previous status of user's active tickets to play state change beeps
-  const prevStatusesRef = useRef<Record<string, string>>({});
+  const [isGuestCountModalOpen, setIsGuestCountModalOpen] = useState(false);
+  const [pendingShopId, setPendingShopId] = useState<number | string | null>(
+    null,
+  );
+  const [guestCount, setGuestCount] = useState<number>(1);
 
-  // Push notification keys (from index.html/sw.js setup)
+  // Refs to prevent duplicate notifications
+  const prevStatusesRef = useRef<Record<string, string>>({});
+  const prevPositionRef = useRef<Record<string, number>>({});
+  const warnedTokensRef = useRef<Set<string>>(new Set());
+  const almostTurnTokensRef = useRef<Set<string>>(new Set());
+
+  // Push notification keys
   const VAPID_PUBLIC_KEY =
     "BNbXwdqvTUVwovlL4C53Je40k2lZFt93ORZPRcq4Am_ETlapaJ6X-Wt3Pk-hOaANb7YL-flD_ji9VvTvHokm7Sc";
   const PUSH_URL = `https://apjvnlxeqjvsmxvqtqqk.supabase.co/functions/v1/send-push`;
   const SUPABASE_ANON =
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwanZubHhlcWp2c214dnF0cXFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3ODMxNDcsImV4cCI6MjA5NTM1OTE0N30.N0s2R_zhrzmiJ-3UGBiUnO6tzS6cgGJwEVklZeJWu8g";
 
-  // Audio cue synthesizer
+  // ── AUDIO SYSTEM ────────────────────────────────────────────────────────
   const playSound = (notifType: string) => {
     try {
       const ctx = new (
@@ -112,6 +127,7 @@ export default function ShopBrowser({
         notifType === "called" || notifType === "immediate_call";
       const isWarning = notifType === "warning";
       const isCanceled = notifType === "canceled";
+      const isAlmost = notifType === "almost_turn";
 
       const beep = (freq: number, startTime: number, duration: number) => {
         const osc = ctx.createOscillator();
@@ -134,6 +150,9 @@ export default function ShopBrowser({
         beep(400, ctx.currentTime + 0.5, 0.4);
       } else if (isCanceled) {
         beep(250, ctx.currentTime, 0.6);
+      } else if (isAlmost) {
+        beep(600, ctx.currentTime, 0.2);
+        beep(800, ctx.currentTime + 0.25, 0.2);
       } else {
         beep(660, ctx.currentTime, 0.5);
       }
@@ -145,15 +164,11 @@ export default function ShopBrowser({
     }
   };
 
-  // Keep internal timer ticking for real-time ticket countdown elements
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentTime(Date.now());
-    }, 1000);
+    const interval = setInterval(() => setCurrentTime(Date.now()), 1000);
     return () => clearInterval(interval);
   }, []);
 
-  // Load user data & saved tokens from localStorage on mount
   useEffect(() => {
     if (typeof window !== "undefined") {
       const storedTokens = localStorage.getItem("qm_my_tokens");
@@ -171,7 +186,6 @@ export default function ShopBrowser({
     }
   }, []);
 
-  // ── REGISTER SERVICE WORKER ON MOUNT (mirrors index.html window load) ────
   useEffect(() => {
     if (typeof window === "undefined" || !("serviceWorker" in navigator))
       return;
@@ -180,7 +194,6 @@ export default function ShopBrowser({
       .register("/sw.js")
       .catch((e) => console.warn("SW registration failed:", e));
 
-    // Relay sound messages sent by the SW when a push arrives in background
     const onSwMessage = (e: MessageEvent) => {
       if (e.data?.type === "PLAY_NOTIFICATION_SOUND") {
         playSound(e.data.notificationType);
@@ -193,18 +206,15 @@ export default function ShopBrowser({
     };
   }, []);
 
-  // Fetch real-time Supabase tickets and subscribe to changes
+  // Fetch tickets and setup live listener
   useEffect(() => {
     const supabase = createClient();
-
     const fetchTickets = async () => {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from("Ticket")
         .select("*")
         .order("createdAt", { ascending: true });
-      if (data) {
-        setTickets(data);
-      }
+      if (data) setTickets(data);
     };
     fetchTickets();
 
@@ -235,20 +245,125 @@ export default function ShopBrowser({
     };
   }, []);
 
-  // Watch statuses of active customer tickets to play state sound alarms
+  // ── 1. TIMER EFFECT (Controls Auto-Cancel and Warnings based on time) ────
+  useEffect(() => {
+    const myCalledTokens = tickets.filter(
+      (t) => myTokenIds.includes(t.id) && t.status === "CALLED" && t.notifiedAt,
+    );
+
+    myCalledTokens.forEach(async (token) => {
+      const elapsed = currentTime - new Date(token.notifiedAt).getTime();
+
+      // Hit 4 minutes: Auto Cancel
+      if (elapsed >= TOTAL_WINDOW_MS) {
+        const supabase = createClient();
+        await supabase
+          .from("Ticket")
+          .update({ status: "CANCELLED" })
+          .eq("id", token.id);
+
+        if (warningTokenId === token.id) setIsWarningModalOpen(false);
+      }
+      // Hit 3 minutes: Warning Pop-up
+      else if (elapsed >= CALL_WINDOW_MS && elapsed < TOTAL_WINDOW_MS) {
+        if (!warnedTokensRef.current.has(token.id)) {
+          warnedTokensRef.current.add(token.id);
+          setWarningTokenId(token.id);
+          setIsWarningModalOpen(true);
+          playSound("warning");
+
+          if (token.subscription) {
+            sendPush(
+              token.subscription,
+              "⚠️ Warning: 1 Minute Left",
+              `You have 1 minute to reach the counter for ticket #${token.ticketNo} before auto-cancellation!`,
+              "warning",
+            );
+          }
+        }
+      }
+    });
+  }, [currentTime, tickets, myTokenIds, warningTokenId]);
+
+  // ── 2. STATUS LISTENER EFFECT (Reacts to Queue movements and state changes) ──
   useEffect(() => {
     const myActive = tickets.filter((t) => myTokenIds.includes(t.id));
+
     myActive.forEach((t) => {
-      const prev = prevStatusesRef.current[t.id];
-      if (prev && prev !== t.status) {
+      const prevStatus = prevStatusesRef.current[t.id];
+
+      // Track Queue Position for "Almost Turn" Notifications
+      if (t.status === "PENDING") {
+        const shopTickets = tickets.filter(
+          (st) =>
+            st.shopId === t.shopId &&
+            (st.status === "PENDING" || st.status === "CALLED"),
+        );
+        const pendingTickets = shopTickets
+          .filter((st) => st.status === "PENDING")
+          .sort(
+            (a, b) =>
+              new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+          );
+        const position = pendingTickets.findIndex((st) => st.id === t.id);
+        const prevPos = prevPositionRef.current[t.id];
+
+        // If they just moved into position 0 (the guy in front of them got called/cancelled)
+        if (
+          position === 0 &&
+          prevPos !== undefined &&
+          prevPos > 0 &&
+          !almostTurnTokensRef.current.has(t.id)
+        ) {
+          almostTurnTokensRef.current.add(t.id);
+          playSound("almost_turn");
+          showToast(`🔜 Get ready! The person in front of you was called.`);
+          if (t.subscription) {
+            sendPush(
+              t.subscription,
+              "🔜 Almost Your Turn!",
+              `The person in front of you was called. You are next!`,
+              "almost_turn",
+            );
+          }
+        }
+        prevPositionRef.current[t.id] = position;
+      }
+
+      // Track Status Changes for Calling and Cancellation Notifications
+      if (prevStatus && prevStatus !== t.status) {
         if (t.status === "CALLED") {
           playSound("called");
           showToast(
             `🔔 Ticket #${t.ticketNo} is called! Proceed to the counter.`,
           );
+          if (t.subscription)
+            sendPush(
+              t.subscription,
+              "📢 It's Your Turn!",
+              `Ticket #${t.ticketNo} is being called! Proceed to the counter.`,
+              "called",
+            );
         } else if (t.status === "CANCELLED") {
           playSound("canceled");
           showToast(`❌ Ticket #${t.ticketNo} has been canceled.`);
+          if (t.subscription)
+            sendPush(
+              t.subscription,
+              "❌ Token Canceled",
+              `Your ticket #${t.ticketNo} was canceled.`,
+              "canceled",
+            );
+
+          // Open Expired modal only if it was auto-cancelled (elapsed time logic)
+          if (
+            t.notifiedAt &&
+            Date.now() - new Date(t.notifiedAt).getTime() >=
+              TOTAL_WINDOW_MS - 5000
+          ) {
+            setExpiredTokenId(t.id);
+            setIsExpiredModalOpen(true);
+          }
         } else if (t.status === "SERVED") {
           playSound("success");
           showToast(`🎉 Ticket #${t.ticketNo} served! Thank you.`);
@@ -258,31 +373,6 @@ export default function ShopBrowser({
     });
   }, [tickets, myTokenIds]);
 
-  // Client-side Auto-Cancel watch (if token remains in CALLED over 4 minutes)
-  useEffect(() => {
-    const expiredActive = tickets.filter(
-      (t) =>
-        myTokenIds.includes(t.id) &&
-        t.status === "CALLED" &&
-        t.notifiedAt &&
-        TOTAL_WINDOW_MS - (currentTime - new Date(t.notifiedAt).getTime()) <= 0,
-    );
-
-    expiredActive.forEach(async (token) => {
-      const supabase = createClient();
-      await supabase
-        .from("Ticket")
-        .update({ status: "CANCELLED" })
-        .eq("id", token.id);
-
-      playSound("canceled");
-      showToast(`Token #${token.ticketNo} auto-canceled due to inactivity.`);
-      setExpiredTokenId(token.id);
-      setIsExpiredModalOpen(true);
-    });
-  }, [currentTime, tickets, myTokenIds]);
-
-  // Load favorites from Supabase on mount
   useEffect(() => {
     if (!userId) return;
     const loadFavorites = async () => {
@@ -291,19 +381,13 @@ export default function ShopBrowser({
         .from("Favorite")
         .select("shopId")
         .eq("userId", userId);
-      if (error) {
-        showToast("Failed to load favorites.");
-        return;
+      if (!error && data) {
+        setFavoriteIds(new Set(data.map((r: any) => r.shopId)));
       }
-      const ids = new Set<number | string>(
-        (data ?? []).map((r: any) => r.shopId),
-      );
-      setFavoriteIds(ids);
     };
     loadFavorites();
   }, [userId]);
 
-  // Transform shops from DB and join live ticket statuses
   const dbShops: ShopItem[] = useMemo(() => {
     return initialShops.map((s, index) => {
       const categoryName = Array.isArray(s.category)
@@ -317,33 +401,29 @@ export default function ShopBrowser({
         lowerCat.includes("tea") ||
         lowerCat.includes("brew") ||
         lowerCat.includes("bakery")
-      ) {
+      )
         type = "cafe";
-      } else if (
+      else if (
         lowerCat.includes("fast") ||
         lowerCat.includes("burger") ||
         lowerCat.includes("food court")
-      ) {
+      )
         type = "fastfood";
-      }
 
-      // Calculate REAL queue and wait from live Supabase tickets
       const shopTickets = tickets.filter((t) => t.shopId === s.id);
       const pendingCount = shopTickets.filter(
         (t) => t.status === "PENDING",
       ).length;
-      const calculatedWait = pendingCount * 6; // ~6 minutes estimated per party
+      const calculatedWait = pendingCount * 6;
 
       const restaurantImages = [
         "https://images.unsplash.com/photo-1544148103-0773bf10d330?w=800&auto=format&fit=crop&q=80",
         "https://images.unsplash.com/photo-1512918728675-ed5a9ecdebfd?w=800&auto=format&fit=crop&q=80",
         "https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?w=800&auto=format&fit=crop&q=80",
-        "https://images.unsplash.com/photo-1579871494447-9811cf80d66c?w=800&auto=format&fit=crop&q=80",
       ];
       const cafeImages = [
         "https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=800&auto=format&fit=crop&q=80",
         "https://images.unsplash.com/photo-1493809842364-4c81cbac9ba0?w=800&auto=format&fit=crop&q=80",
-        "https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=800&auto=format&fit=crop&q=80",
       ];
       const fastfoodImages = [
         "https://images.unsplash.com/photo-1550966871-3ed3cdb5ed0c?w=800&auto=format&fit=crop&q=80",
@@ -352,8 +432,6 @@ export default function ShopBrowser({
       const menuImages = [
         "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800&auto=format&fit=crop&q=80",
         "https://images.unsplash.com/photo-1595858000854-3e99e236594d?w=800&auto=format&fit=crop&q=80",
-        "https://images.unsplash.com/photo-1544025162-8367f082e6c5?w=800&auto=format&fit=crop&q=80",
-        "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=800&auto=format&fit=crop&q=80",
       ];
 
       const imageIndex = typeof s.id === "number" ? s.id : index + 1;
@@ -367,7 +445,6 @@ export default function ShopBrowser({
       return {
         id: s.id,
         name: s.name || `Shop #${imageIndex}`,
-        categoryId: s.categoryId,
         type,
         category:
           categoryName ||
@@ -397,10 +474,7 @@ export default function ShopBrowser({
   const filteredAndSortedShops = useMemo(() => {
     let result = dbShops.filter((shop) => {
       if (filterFavorite && !favoriteIds.has(shop.id)) return false;
-      if (
-        filterCategory !== "all" &&
-        String(shop.categoryId) !== filterCategory
-      )
+      if (filterCategory !== "all" && shop.category !== filterCategory)
         return false;
       if (filterOpenNow && !shop.isOpen) return false;
       if (filterNearBy && shop.distance > 2.0) return false;
@@ -409,9 +483,8 @@ export default function ShopBrowser({
         if (
           !shop.name.toLowerCase().includes(query) &&
           !shop.category.toLowerCase().includes(query)
-        ) {
+        )
           return false;
-        }
       }
       return true;
     });
@@ -422,10 +495,6 @@ export default function ShopBrowser({
           return a.price - b.price;
         case "price-high":
           return b.price - a.price;
-        case "a-z":
-          return a.name.localeCompare(b.name);
-        case "z-a":
-          return b.name.localeCompare(a.name);
         case "distance-close":
           return a.distance - b.distance;
         case "distance-far":
@@ -434,7 +503,6 @@ export default function ShopBrowser({
           return a.name.localeCompare(b.name);
       }
     });
-
     return result;
   }, [
     dbShops,
@@ -447,7 +515,6 @@ export default function ShopBrowser({
     favoriteIds,
   ]);
 
-  // Compute actual active user tokens (excluding dismissed ones)
   const myActiveTickets = useMemo(() => {
     return tickets.filter(
       (t) =>
@@ -460,7 +527,6 @@ export default function ShopBrowser({
     return dbShops.find((s) => s.id === currentDetailId) || null;
   }, [currentDetailId, dbShops]);
 
-  // Live modal numbers
   const liveQueueCount = useMemo(() => {
     if (!activeShopDetail) return 0;
     return tickets.filter(
@@ -468,9 +534,7 @@ export default function ShopBrowser({
     ).length;
   }, [activeShopDetail, tickets]);
 
-  const liveWaitMins = useMemo(() => {
-    return liveQueueCount * 6;
-  }, [liveQueueCount]);
+  const liveWaitMins = useMemo(() => liveQueueCount * 6, [liveQueueCount]);
 
   const showToast = (message: string) => {
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
@@ -484,7 +548,6 @@ export default function ShopBrowser({
     e?: React.MouseEvent,
   ) => {
     if (e) e.stopPropagation();
-
     if (!userId) {
       showToast("Please login to save favorites.");
       return;
@@ -492,7 +555,6 @@ export default function ShopBrowser({
 
     if (togglingIds.has(id)) return;
     setTogglingIds((prev) => new Set(prev).add(id));
-
     const isFav = favoriteIds.has(id);
     const supabase = createClient();
 
@@ -526,7 +588,6 @@ export default function ShopBrowser({
     }
   };
 
-  // ── QUEUE TOKEN OPERATIONS ───────────────────────────────────────────────
   const saveToken = (id: string) => {
     setMyTokenIds((prev) => {
       const updated = [...prev, id];
@@ -541,12 +602,8 @@ export default function ShopBrowser({
       .from("Ticket")
       .update({ status: "CANCELLED" })
       .eq("id", tokenId);
-
     if (error) {
       showToast("Failed to cancel ticket.");
-    } else {
-      showToast("Ticket cancelled successfully.");
-      playSound("canceled");
     }
   };
 
@@ -559,28 +616,32 @@ export default function ShopBrowser({
     showToast("Ticket archived.");
   };
 
-  const rejoinQueue = async (
-    oldTokenId: string | number,
-    shopId: string | number,
-  ) => {
-    dismissTicket(oldTokenId);
-    await handleIssueToken(shopId);
-  };
-
-  // ── REAL TOKEN GENERATION ──────────────────────────────────────────────────
   const handleIssueToken = async (shopId: number | string) => {
     if (!userId) {
       showToast("Please login or register to get a token.");
       setCurrentDetailId(null);
       return;
     }
+    setPendingShopId(shopId);
+    setGuestCount(1);
+    setIsGuestCountModalOpen(true);
+  };
+
+  const confirmIssueToken = async (
+    overrideShopId: number | string | null = null,
+    overrideGuestCount: number | null = null,
+  ) => {
+    const shopId = overrideShopId || pendingShopId;
+    const count = overrideGuestCount || guestCount;
+    if (!shopId || !userId) return;
+
+    setIsGuestCountModalOpen(false);
 
     const targetShop = dbShops.find((s) => s.id === shopId);
     if (!targetShop) return;
 
     const supabase = createClient();
 
-    // Fetch the shop's existing tickets to compute sequence ticketNo
     const shopTickets = tickets.filter((t) => t.shopId === shopId);
     const maxTicket = shopTickets.reduce(
       (max, t) => Math.max(max, t.ticketNo || 0),
@@ -588,6 +649,7 @@ export default function ShopBrowser({
     );
     const nextTicketNo = maxTicket + 1;
 
+    // Calculate queue to see if they immediately go to the counter
     const activeCount = shopTickets.filter(
       (t) => t.status === "PENDING" || t.status === "CALLED",
     ).length;
@@ -599,42 +661,54 @@ export default function ShopBrowser({
         shopId: shopId,
         status: "PENDING",
         ticketNo: nextTicketNo,
-        personCount: 1,
+        personCount: count,
       })
       .select()
       .single();
 
     if (error) {
-      console.error("Supabase ticket insertion error", error);
       showToast("Failed to generate token. Try again.");
       return;
     }
 
     saveToken(data.id);
     setCurrentDetailId(null);
-    showToast(
-      `Success! You got Ticket #${nextTicketNo} for ${targetShop.name}`,
-    );
 
-    // Call dynamic instant activation if there was no active queue
+    let initialStatus = "PENDING";
+
+    // If no queue ahead, immediately Call them.
+    // Triggers 3-minute countdown implicitly via the DB state change logic.
     if (queuePosition === 1) {
+      initialStatus = "CALLED";
       const nowIso = new Date().toISOString();
       await supabase
         .from("Ticket")
         .update({ status: "CALLED", notifiedAt: nowIso })
         .eq("id", data.id);
+      showToast(
+        `Success! You got Ticket #${nextTicketNo} (${count} pax) — It's your turn!`,
+      );
+    } else {
+      showToast(
+        `Success! You got Ticket #${nextTicketNo} for ${targetShop.name} (${count} pax)`,
+      );
     }
 
-    // Trigger Native Push Notification subscribe flow
-    await setupPush(data.id, nextTicketNo, queuePosition, shopId);
+    await setupPush(
+      data.id,
+      nextTicketNo,
+      queuePosition,
+      shopId,
+      initialStatus,
+    );
   };
 
-  // ── NATIVE WEB PUSH ENABLER ───────────────────────────────────────────────
   const setupPush = async (
     tokenId: string,
     ticketNo: number,
     position: number,
     shopId: number | string,
+    initialStatus: string,
   ) => {
     if (typeof window === "undefined") return;
     if (!("Notification" in window) || !("PushManager" in window)) return;
@@ -643,11 +717,8 @@ export default function ShopBrowser({
     if (perm !== "granted") return;
 
     try {
-      // Register the SW (idempotent — safe to call even if already registered)
       await navigator.serviceWorker.register("/sw.js");
-      // Wait until the SW is fully active and controlling the page
       const reg = await navigator.serviceWorker.ready;
-
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlB64ToUint8Array(VAPID_PUBLIC_KEY),
@@ -661,20 +732,26 @@ export default function ShopBrowser({
 
       const shopName = dbShops.find((s) => s.id === shopId)?.name || "the shop";
 
-      if (position === 1) {
+      // 1. Initial push message formatting based on immediate queue status
+      if (initialStatus === "CALLED") {
         await sendPush(
           sub.toJSON(),
           `🔔 ${shopName}: It's Your Turn!`,
           `Ticket #${ticketNo} — please come to the counter within 3 minutes!`,
-          "immediate_call",
+          "called",
         );
       } else {
         const ahead = position - 1;
         const peopleStr = ahead === 1 ? "1 person is" : `${ahead} people are`;
+        const bodyMsg =
+          ahead === 0
+            ? `You are next in line!`
+            : `There ${peopleStr} ahead of you.`;
+
         await sendPush(
           sub.toJSON(),
           `✅ ${shopName}: Token Confirmed`,
-          `You got ticket #${ticketNo}. There ${peopleStr} ahead of you.`,
+          `You got ticket #${ticketNo}. ${bodyMsg}`,
           "queued",
         );
       }
@@ -691,7 +768,7 @@ export default function ShopBrowser({
   ) => {
     if (!subscription) return;
     try {
-      const res = await fetch(PUSH_URL, {
+      await fetch(PUSH_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -699,7 +776,6 @@ export default function ShopBrowser({
         },
         body: JSON.stringify({ subscription, title, body, type }),
       });
-      if (!res.ok) console.error("Push failed:", await res.text());
     } catch (e) {
       console.warn("Push dispatch error", e);
     }
@@ -710,15 +786,12 @@ export default function ShopBrowser({
     const base64 = (base64String + padding)
       .replace(/-/g, "+")
       .replace(/_/g, "/");
-    const rawData = window.atob(base64);
-    const outputArray = new Uint8Array(rawData.length);
-    for (let i = 0; i < rawData.length; ++i) {
-      outputArray[i] = rawData.charCodeAt(i);
-    }
+    const outputArray = new Uint8Array(base64.length);
+    for (let i = 0; i < base64.length; ++i)
+      outputArray[i] = base64.charCodeAt(i);
     return outputArray;
   };
 
-  // Helper to parse countdown strings
   const getTimerState = (notifiedAtStr: string) => {
     if (!notifiedAtStr) return null;
     const calledMs = new Date(notifiedAtStr).getTime();
@@ -768,14 +841,14 @@ export default function ShopBrowser({
           </p>
         </div>
 
-        {/* ── REAL-TIME USER ACTIVE TOKENS DASHBOARD ───────────────────────────────── */}
+        {/* ── REAL-TIME USER ACTIVE TOKENS DASHBOARD ───────────────────────── */}
         {myActiveTickets.length > 0 && (
           <div className="mb-10 p-6 bg-white border border-bgSurface rounded-3xl shadow-xl animate-slide-up">
             <div className="flex items-center justify-between border-b border-bgSurface pb-4 mb-5">
               <div>
                 <h3 className="text-xl font-extrabold text-brandPrimary tracking-tight flex items-center gap-2">
-                  <TicketIcon className="size-6 text-brandPrimary" />
-                  Your Active Tokens
+                  <TicketIcon className="size-6 text-brandPrimary" /> Your
+                  Active Tokens
                 </h3>
                 <p className="text-xs text-textMuted mt-0.5">
                   Live queue trackers & counter calling alerts
@@ -810,7 +883,6 @@ export default function ShopBrowser({
                   token.status === "CALLED" && token.notifiedAt
                     ? getTimerState(token.notifiedAt)
                     : null;
-
                 const isPending = token.status === "PENDING";
                 const isCalled = token.status === "CALLED";
                 const isServed = token.status === "SERVED";
@@ -829,7 +901,6 @@ export default function ShopBrowser({
                         : "border-bgSurface bg-white hover:border-textMuted"
                     }`}
                   >
-                    {/* Header Details */}
                     <div className="p-5 flex items-start gap-4">
                       <div className="bg-brandPrimary text-white w-12 h-12 rounded-xl flex items-center justify-center font-black text-lg shadow-sm shrink-0">
                         {shop.name.charAt(0).toUpperCase()}
@@ -842,11 +913,10 @@ export default function ShopBrowser({
                           #{String(token.ticketNo).padStart(3, "0")}
                         </p>
 
-                        {/* Live dynamic statuses */}
                         {isPending && (
                           <div className="flex flex-col gap-1">
                             <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200 w-max">
-                              <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse"></span>
+                              <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse"></span>{" "}
                               Waiting in line
                             </span>
                             <p className="text-xs text-textMuted font-medium mt-1">
@@ -919,7 +989,6 @@ export default function ShopBrowser({
                       </div>
                     </div>
 
-                    {/* Interactive controls */}
                     <div className="px-5 py-4 bg-bgMain border-t border-bgSurface flex items-center justify-between gap-3">
                       <button
                         onClick={() => {
@@ -928,40 +997,20 @@ export default function ShopBrowser({
                         }}
                         className="flex items-center gap-1.5 text-xs font-bold text-brandPrimary hover:text-opacity-80 transition"
                       >
-                        <QrIcon className="size-4" />
-                        Show QR Code
+                        <QrIcon className="size-4" /> Show QR Code
                       </button>
 
-                      {isPending && (
+                      {(isPending || isCalled) && (
                         <button
                           onClick={() => cancelTicket(token.id)}
                           className="text-xs font-bold text-red-500 hover:text-red-700 transition"
                         >
-                          Cancel
-                        </button>
-                      )}
-
-                      {isCalled && (
-                        <button
-                          onClick={() => cancelTicket(token.id)}
-                          className="text-xs font-bold text-red-500 hover:text-red-700 transition"
-                        >
-                          Give up turn
+                          {isPending ? "Cancel" : "Give up turn"}
                         </button>
                       )}
 
                       {(isServed || isCancelled) && (
                         <div className="flex gap-2">
-                          {isCancelled && (
-                            <button
-                              onClick={() =>
-                                rejoinQueue(token.id, token.shopId)
-                              }
-                              className="text-xs font-bold text-brandPrimary hover:underline"
-                            >
-                              Rejoin End
-                            </button>
-                          )}
                           <button
                             onClick={() => dismissTicket(token.id)}
                             className="text-xs font-bold text-textMuted hover:text-brandPrimary transition"
@@ -978,12 +1027,11 @@ export default function ShopBrowser({
           </div>
         )}
 
-        {/* ── SEARCH & FILTER CONTROLS ─────────────────────────────────────────────────── */}
+        {/* ── SEARCH & FILTER CONTROLS ────────────────────────────────────────── */}
         <div className="sticky-filters py-3 lg:py-4 mb-6 lg:mb-8 mx-0 sm:mx-2 lg:mx-0 px-4 lg:px-6 rounded-2xl flex flex-col gap-2 border border-bgSurface shadow-md transition-all duration-300">
           <div className="flex justify-between items-center w-full">
             <span className="font-bold text-sm text-brandPrimary flex items-center gap-2">
-              <FilterIcon className="size-4" />
-              Filter & Sort
+              <FilterIcon className="size-4" /> Filter & Sort
             </span>
             <button
               onClick={() => setIsFilterBarOpen(!isFilterBarOpen)}
@@ -994,56 +1042,37 @@ export default function ShopBrowser({
           </div>
 
           <div
-            id="filterCollapsible"
             className={`grid transition-[grid-template-rows] duration-500 ease-in-out ${isFilterBarOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
           >
             <div className="overflow-hidden min-h-0">
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pt-4 mt-2 border-t border-bgSurface">
-                <div
-                  className="flex flex-wrap items-center gap-2 lg:gap-3 w-full lg:w-auto overflow-x-auto hide-scrollbar pb-2 lg:pb-0"
-                  id="filterContainer"
-                >
+                <div className="flex flex-wrap items-center gap-2 lg:gap-3 w-full lg:w-auto overflow-x-auto hide-scrollbar pb-2 lg:pb-0">
                   <select
-                    id="categoryFilter"
                     value={filterCategory}
                     onChange={(e) => setFilterCategory(e.target.value)}
                     className="bg-white border border-bgSurface text-xs sm:text-sm font-bold text-brandPrimary outline-none cursor-pointer px-4 py-2.5 rounded-xl shadow-sm shrink-0"
                   >
                     <option value="all">All Categories</option>
-                    {categories.map((category) => (
-                      <option key={category.id} value={String(category.id)}>
-                        {category.category_name}
-                      </option>
-                    ))}
+                    <option value="restaurant">Restaurants</option>
+                    <option value="cafe">Cafes & Bakeries</option>
+                    <option value="fastfood">Fast Casual</option>
                   </select>
 
                   <button
                     onClick={() => setFilterOpenNow(!filterOpenNow)}
-                    className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap border shadow-sm shrink-0 ${
-                      filterOpenNow
-                        ? "bg-brandPrimary text-bgMain border-brandPrimary"
-                        : "bg-white text-brandPrimary border-bgSurface"
-                    }`}
+                    className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap border shadow-sm shrink-0 ${filterOpenNow ? "bg-brandPrimary text-bgMain border-brandPrimary" : "bg-white text-brandPrimary border-bgSurface"}`}
                   >
                     Open Now
                   </button>
                   <button
                     onClick={() => setFilterNearBy(!filterNearBy)}
-                    className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap border shadow-sm shrink-0 ${
-                      filterNearBy
-                        ? "bg-brandPrimary text-bgMain border-brandPrimary"
-                        : "bg-white text-brandPrimary border-bgSurface"
-                    }`}
+                    className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap border shadow-sm shrink-0 ${filterNearBy ? "bg-brandPrimary text-bgMain border-brandPrimary" : "bg-white text-brandPrimary border-bgSurface"}`}
                   >
                     Near By (&lt; 2km)
                   </button>
                   <button
                     onClick={() => setFilterFavorite(!filterFavorite)}
-                    className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap border shadow-sm shrink-0 ${
-                      filterFavorite
-                        ? "bg-brandPrimary text-bgMain border-brandPrimary"
-                        : "bg-white text-brandPrimary border-bgSurface"
-                    }`}
+                    className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap border shadow-sm shrink-0 ${filterFavorite ? "bg-brandPrimary text-bgMain border-brandPrimary" : "bg-white text-brandPrimary border-bgSurface"}`}
                   >
                     Favorites
                   </button>
@@ -1066,11 +1095,8 @@ export default function ShopBrowser({
           </div>
         </div>
 
-        {/* ── VENUES GRID ────────────────────────────────────────────────────────── */}
-        <div
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 sm:gap-6 lg:gap-8 pb-10"
-          id="verticalGrid"
-        >
+        {/* ── VENUES GRID ─────────────────────────────────────────────────────── */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 sm:gap-6 lg:gap-8 pb-10">
           {filteredAndSortedShops.length > 0 ? (
             filteredAndSortedShops.map((shop) => {
               const isFav = favoriteIds.has(shop.id);
@@ -1094,19 +1120,13 @@ export default function ShopBrowser({
                       loading="lazy"
                     />
                     <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-
                     <button
                       onClick={(e) => handleToggleFavorite(shop.id, e)}
                       disabled={isToggling}
-                      className={`absolute top-2 right-2 w-8 h-8 bg-white/90 backdrop-blur rounded-full flex items-center justify-center transition-transform z-10 shadow-sm text-brandPrimary hover:bg-white ${
-                        isToggling
-                          ? "opacity-50 cursor-wait"
-                          : "active:scale-90"
-                      }`}
+                      className={`absolute top-2 right-2 w-8 h-8 bg-white/90 backdrop-blur rounded-full flex items-center justify-center transition-transform z-10 shadow-sm text-brandPrimary hover:bg-white ${isToggling ? "opacity-50 cursor-wait" : "active:scale-90"}`}
                     >
                       <HeartIcon isFav={isFav} className="size-5" />
                     </button>
-
                     <div className="absolute bottom-2 left-2 flex gap-1">
                       {shop.isOpen ? (
                         <div className="flex items-center gap-1 text-[10px] font-bold text-green-600 bg-green-50 px-2 py-1 rounded-md border border-green-200">
@@ -1119,7 +1139,6 @@ export default function ShopBrowser({
                           Closed
                         </div>
                       )}
-
                       {hasActiveQueue && (
                         <div className="flex items-center gap-1 text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-md border border-blue-200">
                           🎟 Queued
@@ -1137,7 +1156,6 @@ export default function ShopBrowser({
                     <h4 className="text-base sm:text-lg font-bold text-brandPrimary mb-2 line-clamp-1 w-full">
                       {shop.name}
                     </h4>
-
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-4 text-xs font-medium text-textMuted">
                       <span className="flex items-center gap-1">
                         <LocationIcon className="size-4" /> {shop.distance} km
@@ -1150,7 +1168,6 @@ export default function ShopBrowser({
                         waiting
                       </span>
                     </div>
-
                     <button className="mt-auto bg-bgMain text-brandPrimary w-full py-2.5 rounded-xl text-xs sm:text-sm font-bold group-hover:bg-brandPrimary group-hover:text-white transition-colors flex items-center justify-center gap-2 border border-bgSurface">
                       <TicketIcon className="size-4.5 inline" />
                       {shop.wait === 0 ? (
@@ -1173,10 +1190,9 @@ export default function ShopBrowser({
         </div>
       </section>
 
-      {/* ── DETAIL DRAWER MODAL ───────────────────────────────────────────────────── */}
+      {/* ── DETAIL DRAWER MODAL ─────────────────────────────────────────────── */}
       {activeShopDetail && (
         <div
-          id="detailModal"
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] flex flex-col justify-end lg:items-center animate-fade-in pb-0 lg:pb-10"
           onClick={() => setCurrentDetailId(null)}
         >
@@ -1186,7 +1202,6 @@ export default function ShopBrowser({
           >
             <div className="relative w-full h-[250px] shrink-0 bg-brandPrimary">
               <img
-                id="detailImg"
                 src={activeShopDetail.image}
                 className="w-full h-full object-cover opacity-90"
               />
@@ -1201,11 +1216,7 @@ export default function ShopBrowser({
                 <button
                   onClick={() => handleToggleFavorite(activeShopDetail.id)}
                   disabled={togglingIds.has(activeShopDetail.id)}
-                  className={`w-10 h-10 rounded-full bg-white/90 backdrop-blur text-brandPrimary flex items-center justify-center hover:bg-white transition-colors shadow-sm ${
-                    togglingIds.has(activeShopDetail.id)
-                      ? "opacity-50 cursor-wait"
-                      : ""
-                  }`}
+                  className={`w-10 h-10 rounded-full bg-white/90 backdrop-blur text-brandPrimary flex items-center justify-center hover:bg-white transition-colors shadow-sm ${togglingIds.has(activeShopDetail.id) ? "opacity-50 cursor-wait" : ""}`}
                 >
                   <HeartIcon
                     isFav={favoriteIds.has(activeShopDetail.id)}
@@ -1218,24 +1229,15 @@ export default function ShopBrowser({
             <div className="p-4 relative -mt-6 bg-bgMain rounded-t-3xl flex-1 text-left">
               <div className="flex justify-between items-start mb-4">
                 <div className="flex-1 pr-4">
-                  <h1
-                    id="detailName"
-                    className="text-2xl font-bold text-brandPrimary leading-tight"
-                  >
+                  <h1 className="text-2xl font-bold text-brandPrimary leading-tight">
                     {activeShopDetail.name}
                   </h1>
-                  <p
-                    id="detailCategory"
-                    className="text-xs text-textMuted font-light uppercase tracking-wider mt-1"
-                  >
+                  <p className="text-xs text-textMuted font-light uppercase tracking-wider mt-1">
                     {activeShopDetail.category}
                   </p>
                 </div>
                 <div className="flex flex-col items-end shrink-0">
-                  <div
-                    className="flex items-center gap-1 mb-1"
-                    id="detailOpenStatus"
-                  >
+                  <div className="flex items-center gap-1 mb-1">
                     {activeShopDetail.isOpen ? (
                       <>
                         <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
@@ -1252,26 +1254,19 @@ export default function ShopBrowser({
                       </>
                     )}
                   </div>
-                  <span
-                    id="detailDistance"
-                    className="text-[10px] text-textMuted font-bold mt-1"
-                  >
+                  <span className="text-[10px] text-textMuted font-bold mt-1">
                     {activeShopDetail.distance} km away
                   </span>
                 </div>
               </div>
 
-              {/* Real-time Dynamic Stats Blocks */}
               <div className="grid grid-cols-2 gap-3 mb-5">
                 <div className="bg-white p-2 rounded-2xl border border-bgSurface shadow-sm text-center">
                   <UsersIcon className="size-6 inline" />
                   <h4 className="font-bold text-sm text-brandPrimary">
                     Live Queue
                   </h4>
-                  <p
-                    id="detailQueueDesc"
-                    className="text-xs text-textMuted mt-1 leading-tight font-bold"
-                  >
+                  <p className="text-xs text-textMuted mt-1 leading-tight font-bold">
                     {liveQueueCount} groups
                   </p>
                 </div>
@@ -1280,32 +1275,25 @@ export default function ShopBrowser({
                   <h4 className="font-bold text-sm text-brandPrimary">
                     Est. Wait
                   </h4>
-                  <p
-                    id="detailTimeDesc"
-                    className="text-xs text-brandPrimary mt-1 leading-tight font-bold"
-                  >
+                  <p className="text-xs text-brandPrimary mt-1 leading-tight font-bold">
                     {liveWaitMins === 0 ? "Immediate" : `~${liveWaitMins} mins`}
                   </p>
                 </div>
               </div>
-
               <p className="mb-5 text-black/60 text-sm">
                 {activeShopDetail.desc}
               </p>
-
               <div className="mb-6">
                 <h3 className="text-sm font-bold text-brandPrimary mb-3 uppercase tracking-wider text-left">
                   Menu Preview
                 </h3>
                 <div className="w-full h-32 rounded-xl bg-bgSurface overflow-hidden border border-bgSurface">
                   <img
-                    id="detailMenuImg"
                     src={activeShopDetail.menuImage}
                     className="w-full h-full object-cover"
                   />
                 </div>
               </div>
-
               <div className="mb-24 lg:mb-20"></div>
             </div>
 
@@ -1343,19 +1331,14 @@ export default function ShopBrowser({
         </div>
       )}
 
-      {/* ── PRETTY USER INTERACTION TOAST ─────────────────────────────────────────── */}
+      {/* ── TOAST ───────────────────────────────────────────────────────────── */}
       <div
-        id="toast"
-        className={`fixed bottom-24 lg:bottom-10 left-1/2 -translate-x-1/2 bg-brandPrimary text-bgMain px-6 py-3 rounded-xl text-sm font-medium shadow-2xl z-[120] transition-all duration-300 transform text-center w-max max-w-[90%] border border-white/10 ${
-          isToastVisible
-            ? "translate-y-0 opacity-100"
-            : "translate-y-24 opacity-0 pointer-events-none"
-        }`}
+        className={`fixed bottom-24 lg:bottom-10 left-1/2 -translate-x-1/2 bg-brandPrimary text-bgMain px-6 py-3 rounded-xl text-sm font-medium shadow-2xl z-[120] transition-all duration-300 transform text-center w-max max-w-[90%] border border-white/10 ${isToastVisible ? "translate-y-0 opacity-100" : "translate-y-24 opacity-0 pointer-events-none"}`}
       >
         {toastMessage}
       </div>
 
-      {/* ── LIVE TICKET QR MODAL PREVIEW ─────────────────────────────────────────── */}
+      {/* ── TICKET QR MODAL ─────────────────────────────────────────────────── */}
       {isQRModalOpen && selectedTicketForQR && (
         <div
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in"
@@ -1383,49 +1366,82 @@ export default function ShopBrowser({
                 {selectedTicketForQR.status}
               </span>
             </div>
-
             <div className="p-8 flex flex-col items-center text-center">
-              {/* Dynamic QR Code based on Supabase UUID */}
               <div className="p-4 bg-bgMain rounded-2xl border border-bgSurface shadow-inner mb-6">
                 <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
-                    selectedTicketForQR.id,
-                  )}&bgcolor=ffffff&color=1e293b&margin=2`}
-                  alt="Ticket QR Code"
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(selectedTicketForQR.id)}&bgcolor=ffffff&color=1e293b&margin=2`}
+                  alt="QR"
                   className="w-44 h-44 rounded-lg object-contain"
                 />
               </div>
-
               <p className="text-xs text-textMuted font-semibold leading-relaxed max-w-xs">
                 Present this QR code to the merchant at the service counter when
                 your ticket number is called.
               </p>
             </div>
+          </div>
+        </div>
+      )}
 
-            <div className="px-6 py-4 bg-bgMain border-t border-bgSurface flex justify-center">
+      {/* ── WARNING (3 MINS) MODAL ──────────────────────────────────────────── */}
+      {isWarningModalOpen && warningTokenId && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[105] flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden relative">
+            <div className="bg-orange-50 px-6 pt-8 pb-6 text-center border-b border-orange-100">
+              <div className="text-6xl mb-4 animate-bounce">⚠️</div>
+              <h2 className="text-2xl font-black text-orange-600 mb-2">
+                3 Minutes Passed!
+              </h2>
+              <p className="text-textMuted text-sm leading-relaxed max-w-[280px] mx-auto font-medium">
+                You have 1 minute left to reach the counter before your ticket
+                is automatically canceled to keep the line moving.
+              </p>
+            </div>
+            <div className="p-6 flex flex-col gap-3">
               <button
-                onClick={() => setIsQRModalOpen(false)}
-                className="w-full bg-brandPrimary text-white py-3 rounded-xl font-bold text-sm shadow-md hover:bg-opacity-90 transition"
+                onClick={async () => {
+                  const token = tickets.find((t) => t.id === warningTokenId);
+                  if (token) {
+                    await cancelTicket(token.id);
+                    await confirmIssueToken(
+                      token.shopId,
+                      token.personCount || 1,
+                    );
+                  }
+                  setIsWarningModalOpen(false);
+                  setWarningTokenId(null);
+                }}
+                className="w-full bg-brandPrimary hover:bg-opacity-90 text-white py-3.5 rounded-xl font-bold text-sm transition shadow-md"
               >
-                Close Preview
+                ReQueue (Go to End)
+              </button>
+              <button
+                onClick={() => {
+                  cancelTicket(warningTokenId);
+                  setIsWarningModalOpen(false);
+                  setWarningTokenId(null);
+                }}
+                className="w-full bg-red-100 hover:bg-red-200 text-red-700 py-3.5 rounded-xl font-bold text-sm transition"
+              >
+                Cancel Ticket
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── AUTO-CANCELLED TIMER EXPIRED MODAL ─────────────────────────────────────── */}
+      {/* ── EXPIRED (AUTO CANCELLED) MODAL ──────────────────────────────────── */}
       {isExpiredModalOpen && expiredTokenId && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[105] flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden relative">
-            <div className="bg-orange-50 px-6 pt-8 pb-6 text-center">
+            <div className="bg-red-50 px-6 pt-8 pb-6 text-center">
               <div className="text-6xl mb-4">⏰</div>
-              <h2 className="text-2xl font-black text-brandPrimary mb-2">
+              <h2 className="text-2xl font-black text-red-600 mb-2">
                 Time's Up!
               </h2>
-              <p className="text-textMuted text-xs leading-relaxed max-w-[280px] mx-auto">
-                Your 3-minute window to reach the counter has passed, so your
-                ticket was auto-canceled to keep the line moving.
+              <p className="text-textMuted text-xs leading-relaxed max-w-[280px] mx-auto font-medium">
+                Your 3-minute window to reach the counter has passed. Your
+                ticket was auto-canceled.
               </p>
             </div>
             <div className="p-6 flex flex-col gap-3">
@@ -1433,7 +1449,11 @@ export default function ShopBrowser({
                 onClick={async () => {
                   const token = tickets.find((t) => t.id === expiredTokenId);
                   if (token) {
-                    await rejoinQueue(token.id, token.shopId);
+                    dismissTicket(token.id);
+                    await confirmIssueToken(
+                      token.shopId,
+                      token.personCount || 1,
+                    );
                   }
                   setIsExpiredModalOpen(false);
                 }}
@@ -1449,6 +1469,72 @@ export default function ShopBrowser({
                 className="w-full bg-red-50 hover:bg-red-100 text-red-600 py-3.5 rounded-xl font-bold text-sm transition"
               >
                 Dismiss Alert
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── GUEST COUNT MODAL ───────────────────────────────────────────────── */}
+      {isGuestCountModalOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4 animate-fade-in"
+          onClick={() => setIsGuestCountModalOpen(false)}
+        >
+          <div
+            className="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-brandPrimary text-white px-6 pt-7 pb-5 text-center">
+              <p className="text-xs uppercase font-bold tracking-widest text-white/70 mb-1">
+                Almost there
+              </p>
+              <h3 className="text-2xl font-black">How many people?</h3>
+              <p className="text-sm text-white/70 mt-1">Including yourself</p>
+            </div>
+
+            <div className="p-6">
+              <div className="flex items-center justify-center gap-6 my-4">
+                <button
+                  onClick={() => setGuestCount((c) => Math.max(1, c - 1))}
+                  className="w-12 h-12 rounded-full bg-bgSurface border border-bgSurface text-brandPrimary text-2xl font-black flex items-center justify-center hover:bg-brandPrimary hover:text-white transition-colors shadow-sm"
+                >
+                  −
+                </button>
+                <span className="text-5xl font-black text-brandPrimary w-16 text-center">
+                  {guestCount}
+                </span>
+                <button
+                  onClick={() => setGuestCount((c) => Math.min(20, c + 1))}
+                  className="w-12 h-12 rounded-full bg-bgSurface border border-bgSurface text-brandPrimary text-2xl font-black flex items-center justify-center hover:bg-brandPrimary hover:text-white transition-colors shadow-sm"
+                >
+                  +
+                </button>
+              </div>
+
+              <div className="flex justify-center gap-2 mb-6 flex-wrap">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setGuestCount(n)}
+                    className={`px-4 py-1.5 rounded-full text-sm font-bold border transition-colors ${guestCount === n ? "bg-brandPrimary text-white border-brandPrimary" : "bg-white text-brandPrimary border-bgSurface hover:border-brandPrimary"}`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                onClick={() => confirmIssueToken(null, null)}
+                className="w-full bg-brandPrimary hover:bg-opacity-90 text-white py-3.5 rounded-xl font-bold text-sm transition shadow-md"
+              >
+                Confirm & Get Token
+              </button>
+              <button
+                onClick={() => setIsGuestCountModalOpen(false)}
+                className="w-full mt-2 text-textMuted text-sm font-semibold py-2 hover:text-brandPrimary transition"
+              >
+                Cancel
               </button>
             </div>
           </div>
