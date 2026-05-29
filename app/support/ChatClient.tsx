@@ -10,6 +10,37 @@ type Message = {
 
 type Lang = "en" | "my";
 
+interface SpeechRecognitionAlternative {
+  transcript: string;
+  confidence: number;
+}
+
+interface SpeechRecognitionResult {
+  readonly length: number;
+  readonly [index: number]: SpeechRecognitionAlternative;
+}
+
+interface SpeechRecognitionResultList {
+  readonly length: number;
+  readonly [index: number]: SpeechRecognitionResult;
+}
+
+interface SpeechRecognitionEvent extends Event {
+  readonly results: SpeechRecognitionResultList;
+}
+
+interface SpeechRecognition extends EventTarget {
+  lang: string;
+  interimResults: boolean;
+  maxAlternatives: number;
+  onstart: (() => void) | null;
+  onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start(): void;
+  stop(): void;
+}
+
 const QUICK_PROMPTS = {
   en: [
     "What is Myanpace?",
