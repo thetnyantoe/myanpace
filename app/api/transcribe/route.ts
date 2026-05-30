@@ -1,0 +1,155 @@
+import { cookies } from "next/headers";
+import { NextResponse, type NextRequest } from "next/server";
+import { createClient } from "@/utils/supabase/server";
+
+// Whisper hard-caps audio files at 25MB. We cap a bit lower to leave headroom
+// for multipart overhead and to make abusive uploads cheap to reject.
+const MAX_AUDIO_BYTES = 20 * 1024 * 1024;
+
+// Rate limits — Whisper is paid usage. Keep these tight to protect the
+// account's credit balance.
+const RATE_LIMIT_MAX_AUTHED = 20;
+const RATE_LIMIT_MAX_ANON = 8;
+const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
+
+const rateBuckets = new Map<string, { count: number; windowStart: number }>();
+
+function takeRateToken(key: string, max: number): boolean {
+  const now = Date.now();
+  const bucket = rateBuckets.get(key);
+  if (!bucket || now - bucket.windowStart > RATE_LIMIT_WINDOW_MS) {
+    rateBuckets.set(key, { count: 1, windowStart: now });
+    return true;
+  }
+  if (bucket.count >= max) return false;
+  bucket.count++;
+  return true;
+}
+
+function clientKey(req: NextRequest): string {
+  const fwd = req.headers.get("x-forwarded-for");
+  if (fwd) return fwd.split(",")[0].trim();
+  return req.headers.get("x-real-ip") ?? "anonymous";
+}
+
+export async function POST(req: NextRequest) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey || !apiKey.trim()) {
+    return NextResponse.json(
+      { error: "Speech-to-text is not configured (missing OPENAI_API_KEY)." },
+      { status: 503 },
+    );
+  }
+
+  // Auth-aware rate-limit key. Anonymous users get a smaller budget so a stray
+  // public client can't burn through credit before we notice.
+  const supabase = createClient(await cookies());
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const rateKey = user ? `u:${user.id}` : `ip:${clientKey(req)}`;
+  const rateMax = user ? RATE_LIMIT_MAX_AUTHED : RATE_LIMIT_MAX_ANON;
+  if (!takeRateToken(rateKey, rateMax)) {
+    return NextResponse.json(
+      { error: "Transcription rate limit exceeded. Try again shortly." },
+      { status: 429 },
+    );
+  }
+
+  // Parse multipart upload.
+  let form: FormData;
+  try {
+    form = await req.formData();
+  } catch {
+    return NextResponse.json(
+      { error: "Expected multipart/form-data with an 'audio' field." },
+      { status: 400 },
+    );
+  }
+
+  const audio = form.get("audio");
+  if (!(audio instanceof Blob)) {
+    return NextResponse.json(
+      { error: "Missing 'audio' file." },
+      { status: 400 },
+    );
+  }
+  if (audio.size === 0) {
+    return NextResponse.json({ error: "Empty audio." }, { status: 400 });
+  }
+  if (audio.size > MAX_AUDIO_BYTES) {
+    return NextResponse.json(
+      { error: `Audio too large (max ${Math.round(MAX_AUDIO_BYTES / 1024 / 1024)}MB).` },
+      { status: 413 },
+    );
+  }
+
+  const langRaw = form.get("lang");
+  const lang = langRaw === "my" ? "my" : langRaw === "en" ? "en" : undefined;
+
+  // Build the Whisper request. We forward the blob with whatever MIME the
+  // browser produced (audio/webm in Chrome, audio/mp4 in iOS Safari) — Whisper
+  // sniffs based on bytes, but it also reads the filename extension as a hint,
+  // so we give it one.
+  const filename =
+    (audio as File).name ||
+    `clip.${(audio.type || "audio/webm").includes("mp4") ? "mp4" : "webm"}`;
+
+  const upstreamForm = new FormData();
+  upstreamForm.set(
+    "file",
+    new File([audio], filename, { type: audio.type || "audio/webm" }),
+  );
+  upstreamForm.set("model", "whisper-1");
+  upstreamForm.set("response_format", "json");
+  if (lang) upstreamForm.set("language", lang);
+
+  let upstream: Response;
+  try {
+    upstream = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: upstreamForm,
+    });
+  } catch (e) {
+    return NextResponse.json(
+      {
+        error:
+          e instanceof Error
+            ? `Whisper unreachable: ${e.message}`
+            : "Whisper unreachable.",
+      },
+      { status: 502 },
+    );
+  }
+
+  if (!upstream.ok) {
+    // Surface upstream errors as a generic 502 — the raw OpenAI error body can
+    // contain organization metadata we don't want to echo back to clients.
+    let detail = `Whisper error (${upstream.status}).`;
+    try {
+      const body = await upstream.json();
+      if (typeof body?.error?.message === "string") detail = body.error.message;
+    } catch {
+      // Non-JSON body — keep generic.
+    }
+    return NextResponse.json({ error: detail }, { status: 502 });
+  }
+
+  let data: unknown;
+  try {
+    data = await upstream.json();
+  } catch {
+    return NextResponse.json(
+      { error: "Whisper returned an unparseable response." },
+      { status: 502 },
+    );
+  }
+
+  const text =
+    typeof (data as { text?: unknown })?.text === "string"
+      ? ((data as { text: string }).text as string)
+      : "";
+
+  return NextResponse.json({ text });
+}
