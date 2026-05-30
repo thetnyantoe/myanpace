@@ -1,4 +1,8 @@
-import { Groq } from "groq-sdk";
+// Switched off Groq for the demo — its free-tier TPM bucket runs out after a
+// handful of tool-using turns. The SDK is kept installed in case we want to
+// dual-route later, but the client below is commented out.
+// import { Groq } from "groq-sdk";
+import OpenAI from "openai";
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/utils/supabase/server";
@@ -9,7 +13,13 @@ import {
 } from "@/backend/queue";
 import { ACTIVE_QUEUE_STATUSES } from "@/lib/queue/types";
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+// const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// gpt-4o-mini's tool calling is more reliable than llama-3.3 and its Burmese
+// is noticeably more natural. Costs ~$0.0006 per turn at our prompt sizes,
+// which is irrelevant for demo traffic.
+const CHAT_MODEL = "gpt-4o-mini";
 
 type ChatMessage = {
   role: "user" | "assistant" | "system" | "tool";
@@ -497,13 +507,13 @@ export async function POST(req: NextRequest) {
       .map((m) => ({ role: m.role, content: m.content }) as ChatMessage),
   ];
 
-  // 3. Tool-calling loop, non-streaming. Groq's streaming API delivers tool
-  //    calls in chunks which makes mid-stream dispatch brittle — resolve all
-  //    tool rounds first, then stream the final assistant turn.
+  // 3. Tool-calling loop, non-streaming. OpenAI streaming delivers tool calls
+  //    in chunks which makes mid-stream dispatch brittle — resolve all tool
+  //    rounds first, then stream the final assistant turn.
   try {
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-      const completion = await groq.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
+      const completion = await openai.chat.completions.create({
+        model: CHAT_MODEL,
         messages: working as any,
         tools: tools as any,
         tool_choice: "auto",
@@ -557,8 +567,8 @@ export async function POST(req: NextRequest) {
 
   // 4. Stream the final assistant turn. tool_choice "none" so the model
   //    commits to text and doesn't open another tool round we won't handle.
-  const stream = await groq.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
+  const stream = await openai.chat.completions.create({
+    model: CHAT_MODEL,
     messages: working as any,
     tools: tools as any,
     tool_choice: "none",

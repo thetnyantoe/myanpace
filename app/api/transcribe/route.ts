@@ -85,24 +85,67 @@ export async function POST(req: NextRequest) {
   }
 
   const langRaw = form.get("lang");
-  const lang = langRaw === "my" ? "my" : langRaw === "en" ? "en" : undefined;
+  const lang = typeof langRaw === "string" ? langRaw : undefined;
 
-  // Build the Whisper request. We forward the blob with whatever MIME the
-  // browser produced (audio/webm in Chrome, audio/mp4 in iOS Safari) — Whisper
-  // sniffs based on bytes, but it also reads the filename extension as a hint,
-  // so we give it one.
+  // `whisper-1` rejects the `language` hint for anything outside its ~57
+  // officially-supported codes (Burmese is not on that list). The newer
+  // `gpt-4o-mini-transcribe` has broader coverage AND costs half as much
+  // ($0.003/min vs $0.006/min) — switch model and only forward `language`
+  // when we know it's safe. For unsupported codes we just let the model
+  // auto-detect, which works well for clearly Burmese audio.
+  const SAFE_LANG_HINTS = new Set([
+    "en",
+    "zh",
+    "es",
+    "fr",
+    "de",
+    "ja",
+    "ko",
+    "th",
+    "vi",
+    "id",
+    "ms",
+    "hi",
+    "ta",
+    "ar",
+    "pt",
+    "ru",
+    "tr",
+    "it",
+    "nl",
+  ]);
+
+  // Build the upstream request. We forward the blob with whatever MIME the
+  // browser produced (audio/webm in Chrome, audio/mp4 in iOS Safari) —
+  // OpenAI sniffs based on bytes, but it also reads the filename extension
+  // as a hint, so we give it one.
   const filename =
     (audio as File).name ||
     `clip.${(audio.type || "audio/webm").includes("mp4") ? "mp4" : "webm"}`;
+
+  // For languages outside the supported `language` list (notably Burmese),
+  // the upstream API errors if we pass the code. We instead bias the model
+  // with a script-locked `prompt` — this is the documented escape hatch and
+  // it actually works: the model copies the prompt's script for its output,
+  // so a Burmese-script prompt locks the transcript to Burmese script.
+  const PROMPTS: Record<string, string> = {
+    my: "ဤအသံဖိုင်ကို မြန်မာဘာသာဖြင့် မြန်မာအက္ခရာဖြင့်သာ စာသားအဖြစ်ပြောင်းပါ။ ဆိုင်များ၊ တန်းစီ၊ ဝန်ဆောင်မှု၊ token၊ မင်္ဂလာပါ။",
+  };
 
   const upstreamForm = new FormData();
   upstreamForm.set(
     "file",
     new File([audio], filename, { type: audio.type || "audio/webm" }),
   );
-  upstreamForm.set("model", "whisper-1");
+  upstreamForm.set("model", "gpt-4o-mini-transcribe");
   upstreamForm.set("response_format", "json");
-  if (lang) upstreamForm.set("language", lang);
+
+  if (lang && SAFE_LANG_HINTS.has(lang)) {
+    upstreamForm.set("language", lang);
+  } else if (lang && PROMPTS[lang]) {
+    // No supported language hint, but we have a script-bias prompt.
+    upstreamForm.set("prompt", PROMPTS[lang]);
+  }
 
   let upstream: Response;
   try {

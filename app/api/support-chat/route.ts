@@ -1,9 +1,14 @@
-import { Groq } from "groq-sdk";
+// Switched off Groq for the demo — free-tier TPM bucket runs out fast. Keep
+// the dep installed in case we want to dual-route later.
+// import { Groq } from "groq-sdk";
+import OpenAI from "openai";
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+// const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const CHAT_MODEL = "gpt-4o-mini";
 
 type ChatMessage = { role: "user" | "assistant" | "system"; content: string };
 
@@ -111,8 +116,8 @@ export async function POST(req: NextRequest) {
     ...messages.slice(-10), // keep last 10 turns for context
   ];
 
-  const stream = await groq.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
+  const stream = await openai.chat.completions.create({
+    model: CHAT_MODEL,
     messages: fullMessages,
     temperature: 0.7,
     max_tokens: 400,
