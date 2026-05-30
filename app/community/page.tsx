@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
-import PostPopup from "./components/PostPopup";
 import {
   Heart,
   MessageCircle,
@@ -11,6 +10,9 @@ import {
   Radio,
   Bookmark,
   User,
+  X,
+  Shield,
+  ArrowUp,
 } from "lucide-react";
 
 type Post = {
@@ -29,6 +31,162 @@ type Comment = {
   userId: string;
   userName: string;
 };
+
+type PostPopupProps = {
+  post: Post;
+  comments: Comment[];
+  commentText: string;
+  onCommentChange: (value: string) => void;
+  onSubmitComment: () => void;
+  onClose: () => void;
+  reacted: boolean;
+  reacting: boolean;
+  onToggleReact: () => void;
+};
+
+function PostPopup({
+  post,
+  comments,
+  commentText,
+  onCommentChange,
+  onSubmitComment,
+  onClose,
+  reacted,
+  reacting,
+  onToggleReact,
+}: PostPopupProps) {
+  return (
+    <div
+      className="fixed inset-0 z-[150] flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center sm:p-4"
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="flex max-h-[90vh] w-full flex-col overflow-hidden rounded-t-3xl border border-[#d6d6d5] bg-[#f3f4f5] sm:max-w-2xl sm:rounded-3xl"
+      >
+        <div className="flex items-center justify-between border-b border-[#d6d6d5] bg-white px-6 py-4">
+          <h3 className="text-lg font-bold text-[#1d2846]">Post Details</h3>
+
+          <button
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-[#d6d6d5] bg-[#f3f4f5] cursor-pointer"
+          >
+            <X className="size-4 text-[#1d2846]" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          <div className="bg-white p-5 md:p-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#1d2846] text-sm font-bold text-white">
+                {post.userId.charAt(0).toUpperCase()}
+              </div>
+
+              <div>
+                <h4 className="text-sm font-bold text-[#1d2846]">
+                  {post.userId}
+                </h4>
+
+                <p className="text-xs text-[#949492]">
+                  {new Date(post.created_at).toLocaleString()}
+                </p>
+              </div>
+            </div>
+
+            <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-[#1d2846]">
+              {post.description}
+            </p>
+
+            {post.image && (
+              <div className="mt-4 overflow-hidden rounded-2xl border border-[#d6d6d5]">
+                <img
+                  src={post.image}
+                  alt="post"
+                  className="max-h-[450px] w-full object-cover"
+                />
+              </div>
+            )}
+
+            <div className="mt-5 flex items-center gap-6 border-t border-[#d6d6d5] pt-4">
+              <button
+                onClick={onToggleReact}
+                disabled={reacting}
+                className="flex items-center gap-2 text-sm font-bold"
+              >
+                <Heart
+                  className={`size-5 ${
+                    reacted ? "fill-red-500 text-red-500" : "text-[#949492]"
+                  }`}
+                />
+
+                <span className={reacted ? "text-red-500" : "text-[#949492]"}>
+                  {post.likeCount}
+                </span>
+              </button>
+
+              <div className="flex items-center gap-2 text-sm font-bold text-[#949492] cursor-pointer">
+                <MessageCircle className="size-5" />
+
+                {comments.length}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4 px-5 py-5 md:px-6">
+            <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-[#949492]">
+              Comments ({comments.length})
+            </h4>
+
+            {comments.length === 0 ? (
+              <div className="rounded-2xl bg-white p-4 text-sm text-[#949492]">
+                No comments yet.
+              </div>
+            ) : (
+              comments.map((comment) => (
+                <div key={comment.id} className="flex gap-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1d2846] text-xs font-bold text-white">
+                    {comment.userName.charAt(0).toUpperCase()}
+                  </div>
+
+                  <div className="flex-1 rounded-2xl rounded-tl-none border border-[#d6d6d5] bg-white p-3.5">
+                    <h5 className="text-xs font-bold text-[#1d2846]">
+                      {comment.userName}
+                    </h5>
+
+                    <p className="mt-1 text-sm leading-relaxed text-[#1d2846]">
+                      {comment.content}
+                    </p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-end gap-3 border-t border-[#d6d6d5] bg-white px-4 py-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1d2846] text-xs font-bold text-white">
+            U
+          </div>
+
+          <textarea
+            rows={1}
+            value={commentText}
+            onChange={(e) => onCommentChange(e.target.value)}
+            placeholder="Write a comment..."
+            className="max-h-32 min-h-[44px] flex-1 resize-none rounded-xl border border-[#d6d6d5] bg-[#f3f4f5] px-4 py-2.5 text-sm text-[#1d2846] outline-none placeholder:text-[#949492]"
+          />
+
+          <button
+            onClick={onSubmitComment}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#1d2846] text-white cursor-pointer"
+          >
+            <Send className="size-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Community() {
   const [description, setDescription] = useState("");
@@ -56,9 +214,21 @@ export default function Community() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
 
   useEffect(() => {
     loadPosts();
+
+    const handleScroll = () => {
+      if (window.scrollY > 300) {
+        setShowScrollTop(true);
+      } else {
+        setShowScrollTop(false);
+      }
+    };
+
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
   const loadPosts = async () => {
@@ -79,15 +249,18 @@ export default function Community() {
     }
 
     const fetchedPosts = data ?? [];
+    
+    // Randomize posts array to prevent static post showing
+    const shuffledPosts = [...fetchedPosts].sort(() => Math.random() - 0.5);
 
-    // 1. Show the posts immediately to the user
-    setPosts(fetchedPosts);
+    // 1. Show the randomly sorted posts immediately to the user
+    setPosts(shuffledPosts);
     setLoading(false);
 
     // 2. Fire metadata fetches asynchronously in the background
-    loadComments(fetchedPosts);
-    loadUserReactions(fetchedPosts);
-    computeTopContributors(fetchedPosts);
+    loadComments(shuffledPosts);
+    loadUserReactions(shuffledPosts);
+    computeTopContributors(shuffledPosts);
   };
 
   const loadComments = async (allPosts: Post[]) => {
@@ -332,6 +505,13 @@ export default function Community() {
     await loadComments(posts);
   };
 
+  const scrollToTop = () => {
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  };
+
   const filteredPosts = posts.filter((post) => {
     if (postFilter === "all") return true;
     if (postFilter === "mine") return post.userId === currentUserId;
@@ -340,10 +520,11 @@ export default function Community() {
   });
 
   return (
-    <div className="min-h-screen bg-[#f3f4f5] px-4 py-6 lg:px-8 pt-[80px] xs:pt-[100px]">
+    <div className="min-h-screen bg-[#f3f4f5] px-4 py-6 lg:px-8 pt-[80px] xs:pt-[100px] relative">
       <div className="mx-auto flex max-w-[1400px] gap-8">
-        {/* Sidebar Left */}
-        <aside className="hidden lg:flex w-[260px] shrink-0 flex-col gap-6">
+        
+        {/* Sidebar Left - Now Sticky */}
+        <aside className="hidden lg:flex w-[260px] shrink-0 flex-col gap-6 sticky top-[100px] h-fit">
           <div className="rounded-3xl border border-[#d6d6d5] bg-white p-5">
             <h3 className="mb-4 text-[10px] font-bold uppercase tracking-[0.2em] text-[#949492]">
               Community Hub
@@ -384,10 +565,18 @@ export default function Community() {
                 <User className="size-4" />
                 My Posts
               </button>
+
+              <div className="my-2 border-t border-[#d6d6d5]"></div>
+
+              <button className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-[#949492] transition hover:bg-[#f3f4f5]">
+                <Shield className="size-4" />
+                Community Standards
+              </button>
             </div>
           </div>
         </aside>
 
+        {}
         {/* Main Content Feed */}
         <section className="flex-1">
           <form
@@ -440,8 +629,30 @@ export default function Community() {
 
           <div className="mt-6 flex flex-col gap-6">
             {loading ? (
-              <div className="rounded-3xl border border-[#d6d6d5] bg-white p-6">
-                Loading posts...
+              <div className="flex flex-col gap-6 w-full">
+                {[1, 2, 3].map((skeleton) => (
+                  <div
+                    key={skeleton}
+                    className="animate-pulse rounded-3xl border border-[#d6d6d5] bg-white p-5"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-[#e5e7eb]"></div>
+                      <div className="space-y-2">
+                        <div className="h-4 w-24 rounded bg-[#e5e7eb]"></div>
+                        <div className="h-3 w-32 rounded bg-[#e5e7eb]"></div>
+                      </div>
+                    </div>
+                    <div className="mt-4 space-y-3">
+                      <div className="h-4 w-full rounded bg-[#e5e7eb]"></div>
+                      <div className="h-4 w-5/6 rounded bg-[#e5e7eb]"></div>
+                      <div className="h-4 w-4/6 rounded bg-[#e5e7eb]"></div>
+                    </div>
+                    <div className="mt-5 flex items-center gap-6 border-t border-[#d6d6d5] pt-4">
+                      <div className="h-5 w-12 rounded bg-[#e5e7eb]"></div>
+                      <div className="h-5 w-12 rounded bg-[#e5e7eb]"></div>
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : filteredPosts.length === 0 ? (
               <div className="rounded-3xl border border-[#d6d6d5] bg-white p-6">
@@ -520,8 +731,9 @@ export default function Community() {
           </div>
         </section>
 
-        {/* Sidebar Right */}
-        <aside className="hidden xl:block w-[300px] shrink-0">
+        {}
+        {/* Sidebar Right - Now Sticky */}
+        <aside className="hidden xl:block w-[300px] shrink-0 sticky top-[100px] h-fit">
           <div className="rounded-3xl border border-[#d6d6d5] bg-white p-5">
             <h3 className="mb-5 text-[10px] font-bold uppercase tracking-[0.2em] text-[#949492]">
               Top Contributors
@@ -576,6 +788,17 @@ export default function Community() {
             toggleReact(selectedPost.id, selectedPost.likeCount)
           }
         />
+      )}
+
+      {/* Go to Up Button */}
+      {showScrollTop && (
+        <button
+          onClick={scrollToTop}
+          className="fixed bottom-8 right-8 z-[100] flex h-12 w-12 items-center justify-center rounded-full bg-[#1d2846] text-white shadow-lg transition hover:bg-[#1d2846]/90 cursor-pointer"
+          aria-label="Go to top"
+        >
+          <ArrowUp className="size-6" />
+        </button>
       )}
     </div>
   );
