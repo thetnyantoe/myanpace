@@ -31,6 +31,7 @@ export interface QueueTicket {
   createdAt: string;
   notifiedAt: string | null;
   servedAt: string | null;
+  noshowAt: string | null;
   personCount: number;
   subscription: PushSubscriptionJSON | null;
 }

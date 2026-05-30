@@ -338,7 +338,13 @@ export default function ManagerClient({ shopId: propShopId }: ManagerPageProps) 
       if (ACTIVE_QUEUE_STATUSES.includes(t.status)) c.active++;
       if (t.status === "COMPLETED" && t.servedAt && isToday(t.servedAt))
         c.servedToday++;
-      if (t.status === "NOSHOW" && isToday(t.createdAt)) c.noshowToday++;
+      // Prefer noshowAt (the moment the ticket was marked NOSHOW). Fall back
+      // to createdAt only for legacy rows that pre-date the noshowAt column.
+      if (
+        t.status === "NOSHOW" &&
+        isToday(t.noshowAt ?? t.createdAt)
+      )
+        c.noshowToday++;
     }
     return c;
   }, [tokens]);
