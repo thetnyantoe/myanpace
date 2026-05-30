@@ -8,16 +8,13 @@ type ShopSession = { kind: "shop"; id: string };
 
 const BACKENDTESTUI_SESSION_COOKIE = "backendtestui_session";
 
+/**
+ * Redirect unauthenticated users to /login. We deliberately do NOT use the
+ * Referer header — it's controlled by the caller and trusting it created
+ * an open-redirect and an infinite-redirect-loop risk.
+ */
 function getRedirectUrl(request: NextRequest) {
-  const referer = request.headers.get("referer");
-  if (referer) {
-    try {
-      return new URL(referer).toString();
-    } catch {
-      // fallthrough
-    }
-  }
-  return new URL("/", request.url).toString();
+  return new URL("/login", request.url).toString();
 }
 
 export async function updateSession(request: NextRequest) {
@@ -46,8 +43,8 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  await supabase.auth.getUser();
-
+  // NB: `supabase.auth.getUser()` is called once below, only when a protected
+  // route actually needs it. The earlier unconditional call was wasted work.
   const pathname = request.nextUrl.pathname;
   const needsManager = pathname === "/m" || pathname.startsWith("/m/");
   const needsOwner = pathname === "/o" || pathname.startsWith("/o/");
