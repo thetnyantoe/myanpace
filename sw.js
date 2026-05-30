@@ -33,7 +33,7 @@ self.addEventListener('push', (event) => {
     // 4. warning         : 3 mins passed
     // 5. canceled        : Token voided
 
-    const isYourTurn = type === 'called';
+    const isYourTurn = type === 'called' || type === 'immediate_call';
     const isWarning  = type === 'warning';
     const isCanceled = type === 'canceled';
     const isAlmost   = type === 'almost_turn';

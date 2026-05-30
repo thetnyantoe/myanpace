@@ -1,7 +1,23 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@/utils/supabase/client";
+import {
+  cancelQueueTicket,
+  createQueueTicket,
+  fetchAllTickets,
+} from "@/backend/queue";
+import {
+  WAIT_MINUTES_PER_GROUP,
+  TOTAL_WINDOW_MS,
+} from "@/lib/queue/constants";
+import { sendPush, setupTicketPush } from "@/lib/queue/push";
+import { playNotificationSound } from "@/lib/queue/sound";
+import { computeTimerState } from "@/lib/queue/timer";
+import {
+  isActiveQueueStatus,
+  STATUS_LABELS,
+} from "@/lib/queue/types";
 import {
   Heart,
   Clock as ClockIcon,
@@ -14,13 +30,6 @@ import {
   X as CrossIcon,
 } from "lucide-react";
 
-// Initialize Supabase directly for the preview environment
-const supabaseUrl = "https://apjvnlxeqjvsmxvqtqqk.supabase.co";
-const supabaseAnonKey =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwanZubHhlcWp2c214dnF0cXFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3ODMxNDcsImV4cCI6MjA5NTM1OTE0N30.N0s2R_zhrzmiJ-3UGBiUnO6tzS6cgGJwEVklZeJWu8g";
-const supabase = createSupabaseClient(supabaseUrl, supabaseAnonKey);
-const createClient = () => supabase;
-
 // Icon wrapper to handle the custom isFav prop
 const HeartIcon = ({
   isFav,
@@ -29,10 +38,6 @@ const HeartIcon = ({
   isFav?: boolean;
   className?: string;
 }) => <Heart className={className} fill={isFav ? "currentColor" : "none"} />;
-
-// Constants matching the timer windows
-const CALL_WINDOW_MS = 3 * 60 * 1000; // 3 minutes before warning popup
-const TOTAL_WINDOW_MS = 4 * 60 * 1000; // 4 minutes total before auto-cancel
 
 interface ShopItem {
   id: number | string;
@@ -94,75 +99,17 @@ export default function ShopBrowser({
   const [isWarningModalOpen, setIsWarningModalOpen] = useState(false);
   const [warningTokenId, setWarningTokenId] = useState<string | null>(null);
 
-  // Expired Modal (triggered at 4 minutes)
-  const [isExpiredModalOpen, setIsExpiredModalOpen] = useState(false);
-  const [expiredTokenId, setExpiredTokenId] = useState<string | null>(null);
-
   const [isGuestCountModalOpen, setIsGuestCountModalOpen] = useState(false);
   const [pendingShopId, setPendingShopId] = useState<number | string | null>(
     null,
   );
   const [guestCount, setGuestCount] = useState<number>(1);
 
-  // Refs to prevent duplicate notifications
-  const prevStatusesRef = useRef<Record<string, string>>({});
-  const prevPositionRef = useRef<Record<string, number>>({});
+  const notifiedAlmostRef = useRef<Set<string>>(new Set());
+  const notifiedCanceledRef = useRef<Set<string>>(new Set());
   const warnedTokensRef = useRef<Set<string>>(new Set());
-  const almostTurnTokensRef = useRef<Set<string>>(new Set());
-
-  // Push notification keys
-  const VAPID_PUBLIC_KEY =
-    "BNbXwdqvTUVwovlL4C53Je40k2lZFt93ORZPRcq4Am_ETlapaJ6X-Wt3Pk-hOaANb7YL-flD_ji9VvTvHokm7Sc";
-  const PUSH_URL = `https://apjvnlxeqjvsmxvqtqqk.supabase.co/functions/v1/send-push`;
-  const SUPABASE_ANON =
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwanZubHhlcWp2c214dnF0cXFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3ODMxNDcsImV4cCI6MjA5NTM1OTE0N30.N0s2R_zhrzmiJ-3UGBiUnO6tzS6cgGJwEVklZeJWu8g";
-
-  // ── AUDIO SYSTEM ────────────────────────────────────────────────────────
-  const playSound = (notifType: string) => {
-    try {
-      const ctx = new (
-        window.AudioContext || (window as any).webkitAudioContext
-      )();
-      const isYourTurn =
-        notifType === "called" || notifType === "immediate_call";
-      const isWarning = notifType === "warning";
-      const isCanceled = notifType === "canceled";
-      const isAlmost = notifType === "almost_turn";
-
-      const beep = (freq: number, startTime: number, duration: number) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.type = "sine";
-        osc.frequency.setValueAtTime(freq, startTime);
-        gain.gain.setValueAtTime(0.3, startTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
-        osc.start(startTime);
-        osc.stop(startTime + duration);
-      };
-
-      if (isYourTurn) {
-        beep(880, ctx.currentTime, 0.35);
-        beep(1100, ctx.currentTime + 0.42, 0.45);
-      } else if (isWarning) {
-        beep(400, ctx.currentTime, 0.4);
-        beep(400, ctx.currentTime + 0.5, 0.4);
-      } else if (isCanceled) {
-        beep(250, ctx.currentTime, 0.6);
-      } else if (isAlmost) {
-        beep(600, ctx.currentTime, 0.2);
-        beep(800, ctx.currentTime + 0.25, 0.2);
-      } else {
-        beep(660, ctx.currentTime, 0.5);
-      }
-    } catch (e) {
-      console.warn(
-        "AudioContext playback prevented by browser security standard.",
-        e,
-      );
-    }
-  };
+  const [showAutoCancelBanner, setShowAutoCancelBanner] = useState(false);
+  const [expiredCountdown, setExpiredCountdown] = useState(60);
 
   useEffect(() => {
     const interval = setInterval(() => setCurrentTime(Date.now()), 1000);
@@ -196,7 +143,7 @@ export default function ShopBrowser({
 
     const onSwMessage = (e: MessageEvent) => {
       if (e.data?.type === "PLAY_NOTIFICATION_SOUND") {
-        playSound(e.data.notificationType);
+        playNotificationSound(e.data.notificationType);
       }
     };
     navigator.serviceWorker.addEventListener("message", onSwMessage);
@@ -206,172 +153,166 @@ export default function ShopBrowser({
     };
   }, []);
 
-  // Fetch tickets and setup live listener
-  useEffect(() => {
-    const supabase = createClient();
-    const fetchTickets = async () => {
-      const { data } = await supabase
-        .from("Ticket")
-        .select("*")
-        .order("createdAt", { ascending: true });
-      if (data) setTickets(data);
-    };
-    fetchTickets();
+  const sameShop = (a: unknown, b: unknown) => String(a) === String(b);
 
+  const checkQueuePositions = (allTickets: any[]) => {
+    const shopNames = new Map(
+      initialShops.map((s) => [s.id, s.name as string]),
+    );
+
+    myTokenIds.forEach((tokenId) => {
+      const token = allTickets.find((t) => t.id === tokenId);
+      if (!token || token.status !== "PENDING") return;
+
+      const pending = allTickets
+        .filter((t) => sameShop(t.shopId, token.shopId) && t.status === "PENDING")
+        .sort(
+          (a, b) =>
+            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+        );
+
+      const pos = pending.findIndex((t) => t.id === tokenId);
+      if (pos === 1 && !notifiedAlmostRef.current.has(tokenId)) {
+        notifiedAlmostRef.current.add(tokenId);
+        const shopName = shopNames.get(token.shopId) || "the shop";
+        if (token.subscription) {
+          sendPush(
+            token.subscription,
+            `⏳ ${shopName}: You're Next!`,
+            "There is only 1 person ahead of you. Get ready!",
+            "queued",
+          );
+        }
+        showToast(`⏳ You're next at ${shopName}!`);
+        playNotificationSound("queued");
+      }
+    });
+  };
+
+  const handleTicketRealtime = (payload: any, prev: any[]) => {
+    let next = prev;
+
+    if (payload.eventType === "INSERT") {
+      if (prev.some((t) => t.id === payload.new.id)) return prev;
+      next = [...prev, payload.new];
+    } else if (payload.eventType === "UPDATE") {
+      const i = prev.findIndex((t) => t.id === payload.new.id);
+      const merged = { ...(i !== -1 ? prev[i] : {}), ...payload.new };
+      next =
+        i !== -1
+          ? prev.map((t) => (t.id === payload.new.id ? merged : t))
+          : [...prev, merged];
+
+      if (
+        merged.status === "NOSHOW" &&
+        myTokenIds.includes(merged.id) &&
+        merged.notifiedAt
+      ) {
+        const elapsed =
+          Date.now() - new Date(merged.notifiedAt).getTime();
+        if (elapsed >= TOTAL_WINDOW_MS - 5000) {
+          setShowAutoCancelBanner(true);
+        }
+        if (merged.subscription && !notifiedCanceledRef.current.has(merged.id)) {
+          notifiedCanceledRef.current.add(merged.id);
+          const shopName =
+            initialShops.find((s) => s.id === merged.shopId)?.name ||
+            "the shop";
+          sendPush(
+            merged.subscription,
+            `❌ ${shopName}: No Show`,
+            `Your ticket #${merged.ticketNo} was marked as no show.`,
+            "canceled",
+          );
+        }
+        playNotificationSound("canceled");
+      }
+
+      if (merged.status === "NOTIFIED" && myTokenIds.includes(merged.id)) {
+        playNotificationSound("called");
+      }
+    } else if (payload.eventType === "DELETE") {
+      next = prev.filter((t) => t.id !== payload.old.id);
+    } else {
+      return prev;
+    }
+
+    checkQueuePositions(next);
+    return next;
+  };
+
+  // Fetch tickets via server action (bypasses RLS) + realtime refresh
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadTickets = async () => {
+      const result = await fetchAllTickets();
+      if (cancelled) return;
+      if (result.ok) {
+        setTickets(result.data);
+        checkQueuePositions(result.data);
+      } else {
+        console.error("Ticket load failed:", result.error);
+      }
+    };
+
+    loadTickets();
+    const poll = setInterval(loadTickets, 4000);
+
+    const supabase = createClient();
     const channel = supabase
       .channel("live-ticket-feed")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "Ticket" },
         (payload) => {
-          if (payload.eventType === "INSERT") {
-            setTickets((prev) => {
-              if (prev.some((t) => t.id === payload.new.id)) return prev;
-              return [...prev, payload.new];
-            });
-          } else if (payload.eventType === "UPDATE") {
-            setTickets((prev) =>
-              prev.map((t) => (t.id === payload.new.id ? payload.new : t)),
-            );
-          } else if (payload.eventType === "DELETE") {
-            setTickets((prev) => prev.filter((t) => t.id !== payload.old.id));
-          }
+          setTickets((prev) => handleTicketRealtime(payload, prev));
+          loadTickets();
         },
       )
       .subscribe();
 
     return () => {
+      cancelled = true;
+      clearInterval(poll);
       supabase.removeChannel(channel);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myTokenIds, initialShops]);
 
-  // ── 1. TIMER EFFECT (Controls Auto-Cancel and Warnings based on time) ────
+  // Customer warning modal at 3-minute mark (auto-cancel runs on manager side)
   useEffect(() => {
-    const myCalledTokens = tickets.filter(
-      (t) => myTokenIds.includes(t.id) && t.status === "CALLED" && t.notifiedAt,
+    const myNOTIFIEDTokens = tickets.filter(
+      (t) => myTokenIds.includes(t.id) && t.status === "NOTIFIED" && t.notifiedAt,
     );
 
-    myCalledTokens.forEach(async (token) => {
-      const elapsed = currentTime - new Date(token.notifiedAt).getTime();
+    myNOTIFIEDTokens.forEach((token) => {
+      const { inWarning, totalRemain } = computeTimerState(
+        token.notifiedAt,
+        currentTime,
+      );
 
-      // Hit 4 minutes: Auto Cancel
-      if (elapsed >= TOTAL_WINDOW_MS) {
-        const supabase = createClient();
-        await supabase
-          .from("Ticket")
-          .update({ status: "CANCELLED" })
-          .eq("id", token.id);
-
-        if (warningTokenId === token.id) setIsWarningModalOpen(false);
-      }
-      // Hit 3 minutes: Warning Pop-up
-      else if (elapsed >= CALL_WINDOW_MS && elapsed < TOTAL_WINDOW_MS) {
-        if (!warnedTokensRef.current.has(token.id)) {
-          warnedTokensRef.current.add(token.id);
-          setWarningTokenId(token.id);
-          setIsWarningModalOpen(true);
-          playSound("warning");
-
-          if (token.subscription) {
-            sendPush(
-              token.subscription,
-              "⚠️ Warning: 1 Minute Left",
-              `You have 1 minute to reach the counter for ticket #${token.ticketNo} before auto-cancellation!`,
-              "warning",
-            );
-          }
-        }
+      if (
+        inWarning &&
+        totalRemain > 0 &&
+        !warnedTokensRef.current.has(token.id)
+      ) {
+        warnedTokensRef.current.add(token.id);
+        setWarningTokenId(token.id);
+        setIsWarningModalOpen(true);
+        setExpiredCountdown(Math.max(1, Math.min(60, Math.ceil(totalRemain / 1000))));
+        playNotificationSound("warning");
       }
     });
-  }, [currentTime, tickets, myTokenIds, warningTokenId]);
+  }, [currentTime, tickets, myTokenIds]);
 
-  // ── 2. STATUS LISTENER EFFECT (Reacts to Queue movements and state changes) ──
   useEffect(() => {
-    const myActive = tickets.filter((t) => myTokenIds.includes(t.id));
-
-    myActive.forEach((t) => {
-      const prevStatus = prevStatusesRef.current[t.id];
-
-      // Track Queue Position for "Almost Turn" Notifications
-      if (t.status === "PENDING") {
-        const shopTickets = tickets.filter(
-          (st) =>
-            st.shopId === t.shopId &&
-            (st.status === "PENDING" || st.status === "CALLED"),
-        );
-        const pendingTickets = shopTickets
-          .filter((st) => st.status === "PENDING")
-          .sort(
-            (a, b) =>
-              new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-          );
-        const position = pendingTickets.findIndex((st) => st.id === t.id);
-        const prevPos = prevPositionRef.current[t.id];
-
-        // If they just moved into position 0 (the guy in front of them got called/cancelled)
-        if (
-          position === 0 &&
-          prevPos !== undefined &&
-          prevPos > 0 &&
-          !almostTurnTokensRef.current.has(t.id)
-        ) {
-          almostTurnTokensRef.current.add(t.id);
-          playSound("almost_turn");
-          showToast(`🔜 Get ready! The person in front of you was called.`);
-          if (t.subscription) {
-            sendPush(
-              t.subscription,
-              "🔜 Almost Your Turn!",
-              `The person in front of you was called. You are next!`,
-              "almost_turn",
-            );
-          }
-        }
-        prevPositionRef.current[t.id] = position;
-      }
-
-      // Track Status Changes for Calling and Cancellation Notifications
-      if (prevStatus && prevStatus !== t.status) {
-        if (t.status === "CALLED") {
-          playSound("called");
-          showToast(
-            `🔔 Ticket #${t.ticketNo} is called! Proceed to the counter.`,
-          );
-          if (t.subscription)
-            sendPush(
-              t.subscription,
-              "📢 It's Your Turn!",
-              `Ticket #${t.ticketNo} is being called! Proceed to the counter.`,
-              "called",
-            );
-        } else if (t.status === "CANCELLED") {
-          playSound("canceled");
-          showToast(`❌ Ticket #${t.ticketNo} has been canceled.`);
-          if (t.subscription)
-            sendPush(
-              t.subscription,
-              "❌ Token Canceled",
-              `Your ticket #${t.ticketNo} was canceled.`,
-              "canceled",
-            );
-
-          // Open Expired modal only if it was auto-cancelled (elapsed time logic)
-          if (
-            t.notifiedAt &&
-            Date.now() - new Date(t.notifiedAt).getTime() >=
-              TOTAL_WINDOW_MS - 5000
-          ) {
-            setExpiredTokenId(t.id);
-            setIsExpiredModalOpen(true);
-          }
-        } else if (t.status === "SERVED") {
-          playSound("success");
-          showToast(`🎉 Ticket #${t.ticketNo} served! Thank you.`);
-        }
-      }
-      prevStatusesRef.current[t.id] = t.status;
-    });
-  }, [tickets, myTokenIds]);
+    if (!isWarningModalOpen) return;
+    const interval = setInterval(() => {
+      setExpiredCountdown((s) => Math.max(0, s - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isWarningModalOpen]);
 
   useEffect(() => {
     if (!userId) return;
@@ -410,11 +351,14 @@ export default function ShopBrowser({
       )
         type = "fastfood";
 
-      const shopTickets = tickets.filter((t) => t.shopId === s.id);
+      const shopTickets = tickets.filter((t) => sameShop(t.shopId, s.id));
       const pendingCount = shopTickets.filter(
         (t) => t.status === "PENDING",
       ).length;
-      const calculatedWait = pendingCount * 6;
+      const activeCount = shopTickets.filter((t) =>
+        isActiveQueueStatus(t.status),
+      ).length;
+      const calculatedWait = activeCount * WAIT_MINUTES_PER_GROUP;
 
       const restaurantImages = [
         "https://images.unsplash.com/photo-1544148103-0773bf10d330?w=800&auto=format&fit=crop&q=80",
@@ -530,11 +474,15 @@ export default function ShopBrowser({
   const liveQueueCount = useMemo(() => {
     if (!activeShopDetail) return 0;
     return tickets.filter(
-      (t) => t.shopId === activeShopDetail.id && t.status === "PENDING",
+      (t) =>
+        sameShop(t.shopId, activeShopDetail.id) && isActiveQueueStatus(t.status),
     ).length;
   }, [activeShopDetail, tickets]);
 
-  const liveWaitMins = useMemo(() => liveQueueCount * 6, [liveQueueCount]);
+  const liveWaitMins = useMemo(
+    () => liveQueueCount * WAIT_MINUTES_PER_GROUP,
+    [liveQueueCount],
+  );
 
   const showToast = (message: string) => {
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
@@ -597,13 +545,9 @@ export default function ShopBrowser({
   };
 
   const cancelTicket = async (tokenId: string | number) => {
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("Ticket")
-      .update({ status: "CANCELLED" })
-      .eq("id", tokenId);
-    if (error) {
-      showToast("Failed to cancel ticket.");
+    const result = await cancelQueueTicket(String(tokenId));
+    if (!result.ok) {
+      showToast(result.error || "Failed to cancel ticket.");
     }
   };
 
@@ -637,182 +581,44 @@ export default function ShopBrowser({
 
     setIsGuestCountModalOpen(false);
 
-    const targetShop = dbShops.find((s) => s.id === shopId);
+    const targetShop = dbShops.find((s) => sameShop(s.id, shopId));
     if (!targetShop) return;
 
-    const supabase = createClient();
-
-    const shopTickets = tickets.filter((t) => t.shopId === shopId);
-    const maxTicket = shopTickets.reduce(
-      (max, t) => Math.max(max, t.ticketNo || 0),
-      0,
-    );
-    const nextTicketNo = maxTicket + 1;
-
-    // Calculate queue to see if they immediately go to the counter
-    const activeCount = shopTickets.filter(
-      (t) => t.status === "PENDING" || t.status === "CALLED",
-    ).length;
-    const queuePosition = activeCount + 1;
-
-    const { data, error } = await supabase
-      .from("Ticket")
-      .insert({
-        shopId: shopId,
-        status: "PENDING",
-        ticketNo: nextTicketNo,
-        personCount: count,
-      })
-      .select()
-      .single();
-
-    if (error) {
-      showToast("Failed to generate token. Try again.");
+    const result = await createQueueTicket(String(shopId), count);
+    if (!result.ok) {
+      showToast(result.error || "Failed to generate token. Try again.");
       return;
     }
 
-    saveToken(data.id);
+    const { ticket, queuePosition, immediateCall } = result.data;
+    const nextTicketNo = ticket.ticketNo;
+
+    saveToken(ticket.id);
+
+    if (queuePosition <= 2) {
+      notifiedAlmostRef.current.add(ticket.id);
+    }
+
     setCurrentDetailId(null);
 
-    let initialStatus = "PENDING";
-
-    // If no queue ahead, immediately Call them.
-    // Triggers 3-minute countdown implicitly via the DB state change logic.
-    if (queuePosition === 1) {
-      initialStatus = "CALLED";
-      const nowIso = new Date().toISOString();
-      await supabase
-        .from("Ticket")
-        .update({ status: "CALLED", notifiedAt: nowIso })
-        .eq("id", data.id);
+    if (immediateCall) {
       showToast(
-        `Success! You got Ticket #${nextTicketNo} (${count} pax) — It's your turn!`,
+        `Success! Ticket #${nextTicketNo} (${count} pax) — It's your turn!`,
       );
+      playNotificationSound("immediate_call");
     } else {
       showToast(
         `Success! You got Ticket #${nextTicketNo} for ${targetShop.name} (${count} pax)`,
       );
     }
 
-    await setupPush(
-      data.id,
+    await setupTicketPush(
+      ticket.id,
       nextTicketNo,
       queuePosition,
-      shopId,
-      initialStatus,
+      targetShop.name,
+      immediateCall,
     );
-  };
-
-  const setupPush = async (
-    tokenId: string,
-    ticketNo: number,
-    position: number,
-    shopId: number | string,
-    initialStatus: string,
-  ) => {
-    if (typeof window === "undefined") return;
-    if (!("Notification" in window) || !("PushManager" in window)) return;
-
-    const perm = await Notification.requestPermission();
-    if (perm !== "granted") return;
-
-    try {
-      await navigator.serviceWorker.register("/sw.js");
-      const reg = await navigator.serviceWorker.ready;
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlB64ToUint8Array(VAPID_PUBLIC_KEY),
-      });
-
-      const supabase = createClient();
-      await supabase
-        .from("Ticket")
-        .update({ subscription: sub.toJSON() })
-        .eq("id", tokenId);
-
-      const shopName = dbShops.find((s) => s.id === shopId)?.name || "the shop";
-
-      // 1. Initial push message formatting based on immediate queue status
-      if (initialStatus === "CALLED") {
-        await sendPush(
-          sub.toJSON(),
-          `🔔 ${shopName}: It's Your Turn!`,
-          `Ticket #${ticketNo} — please come to the counter within 3 minutes!`,
-          "called",
-        );
-      } else {
-        const ahead = position - 1;
-        const peopleStr = ahead === 1 ? "1 person is" : `${ahead} people are`;
-        const bodyMsg =
-          ahead === 0
-            ? `You are next in line!`
-            : `There ${peopleStr} ahead of you.`;
-
-        await sendPush(
-          sub.toJSON(),
-          `✅ ${shopName}: Token Confirmed`,
-          `You got ticket #${ticketNo}. ${bodyMsg}`,
-          "queued",
-        );
-      }
-    } catch (e) {
-      console.warn("Push subscription skipped or failed:", e);
-    }
-  };
-
-  const sendPush = async (
-    subscription: any,
-    title: string,
-    body: string,
-    type = "generic",
-  ) => {
-    if (!subscription) return;
-    try {
-      await fetch(PUSH_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${SUPABASE_ANON}`,
-        },
-        body: JSON.stringify({ subscription, title, body, type }),
-      });
-    } catch (e) {
-      console.warn("Push dispatch error", e);
-    }
-  };
-
-  const urlB64ToUint8Array = (base64String: string) => {
-    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-    const base64 = (base64String + padding)
-      .replace(/-/g, "+")
-      .replace(/_/g, "/");
-    const outputArray = new Uint8Array(base64.length);
-    for (let i = 0; i < base64.length; ++i)
-      outputArray[i] = base64.charCodeAt(i);
-    return outputArray;
-  };
-
-  const getTimerState = (notifiedAtStr: string) => {
-    if (!notifiedAtStr) return null;
-    const calledMs = new Date(notifiedAtStr).getTime();
-    const elapsed = currentTime - calledMs;
-    const warnRemain = CALL_WINDOW_MS - elapsed;
-    const totalRemain = TOTAL_WINDOW_MS - elapsed;
-    const inWarning = warnRemain <= 0 && totalRemain > 0;
-    const displayMs = inWarning
-      ? Math.max(0, totalRemain)
-      : Math.max(0, warnRemain);
-    const isUrgent = !inWarning && warnRemain < 60000;
-    const isExpired = totalRemain <= 0;
-
-    return {
-      warnRemain,
-      totalRemain,
-      inWarning,
-      displayMs,
-      isUrgent,
-      isExpired,
-    };
   };
 
   useEffect(() => {
@@ -842,6 +648,25 @@ export default function ShopBrowser({
         </div>
 
         {/* ── REAL-TIME USER ACTIVE TOKENS DASHBOARD ───────────────────────── */}
+        {showAutoCancelBanner && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-2xl flex items-start gap-3">
+            <span className="text-2xl shrink-0">⚠️</span>
+            <div className="flex-1">
+              <p className="font-bold text-sm">Token Auto-Canceled</p>
+              <p className="text-xs mt-0.5 text-red-600 leading-relaxed">
+                Your token was automatically canceled because you didn&apos;t
+                respond within the time limit. You can get a new token anytime.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowAutoCancelBanner(false)}
+              className="shrink-0 text-red-300 hover:text-red-500 transition"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {myActiveTickets.length > 0 && (
           <div className="mb-10 p-6 bg-white border border-bgSurface rounded-3xl shadow-xl animate-slide-up">
             <div className="flex items-center justify-between border-b border-bgSurface pb-4 mb-5">
@@ -851,7 +676,7 @@ export default function ShopBrowser({
                   Active Tokens
                 </h3>
                 <p className="text-xs text-textMuted mt-0.5">
-                  Live queue trackers & counter calling alerts
+                  Live queue trackers & counter call alerts
                 </p>
               </div>
               <span className="text-[10px] uppercase font-bold tracking-widest text-brandPrimary bg-bgMain px-3 py-1.5 rounded-full border border-bgSurface">
@@ -865,8 +690,8 @@ export default function ShopBrowser({
                 const shop = dbShops.find((s) => s.id === token.shopId);
                 if (!shop) return null;
 
-                const shopTickets = tickets.filter(
-                  (t) => t.shopId === token.shopId,
+                const shopTickets = tickets.filter((t) =>
+                  sameShop(t.shopId, token.shopId),
                 );
                 const pendingTickets = shopTickets
                   .filter((t) => t.status === "PENDING")
@@ -880,19 +705,20 @@ export default function ShopBrowser({
                 );
 
                 const timerState =
-                  token.status === "CALLED" && token.notifiedAt
-                    ? getTimerState(token.notifiedAt)
+                  token.status === "NOTIFIED" && token.notifiedAt
+                    ? computeTimerState(token.notifiedAt, currentTime)
                     : null;
                 const isPending = token.status === "PENDING";
-                const isCalled = token.status === "CALLED";
-                const isServed = token.status === "SERVED";
-                const isCancelled = token.status === "CANCELLED";
+                const isNotified = token.status === "NOTIFIED";
+                const isServing = token.status === "SERVING";
+                const isCompleted = token.status === "COMPLETED";
+                const isNoShow = token.status === "NOSHOW";
 
                 return (
                   <div
                     key={token.id}
                     className={`relative flex flex-col justify-between border rounded-2xl overflow-hidden shadow-sm transition-all duration-300 ${
-                      isCalled
+                      isNotified
                         ? timerState?.inWarning
                           ? "border-red-400 bg-red-50/30 ring-2 ring-red-400 animate-pulse"
                           : timerState?.isUrgent
@@ -922,13 +748,21 @@ export default function ShopBrowser({
                             <p className="text-xs text-textMuted font-medium mt-1">
                               {position >= 0 ? (
                                 <>
-                                  There {position === 0 ? "is" : "are"}{" "}
+                                  Queue position{" "}
                                   <span className="font-bold text-brandPrimary">
-                                    {position === 0
-                                      ? "no one"
-                                      : `${position} ${position === 1 ? "person" : "people"}`}
-                                  </span>{" "}
-                                  ahead of you.
+                                    #{position + 1}
+                                  </span>
+                                  {position > 0 && (
+                                    <>
+                                      {" "}
+                                      ·{" "}
+                                      <span className="font-bold text-brandPrimary">
+                                        {position}{" "}
+                                        {position === 1 ? "person" : "people"}
+                                      </span>{" "}
+                                      ahead
+                                    </>
+                                  )}
                                 </>
                               ) : (
                                 "Calculating line position..."
@@ -937,7 +771,7 @@ export default function ShopBrowser({
                           </div>
                         )}
 
-                        {isCalled && (
+                        {isNotified && (
                           <div className="flex flex-col gap-1">
                             <span className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200 w-max animate-bounce">
                               📢 Go to Counter!
@@ -951,13 +785,10 @@ export default function ShopBrowser({
                                   <span
                                     className={`text-sm font-black ${timerState.inWarning || timerState.isUrgent ? "text-red-600" : "text-blue-600"}`}
                                   >
-                                    {Math.floor(
-                                      timerState.displayMs / 1000 / 60,
-                                    )}
+                                    {Math.floor(timerState.displayMs / 1000 / 60)}
                                     :
                                     {String(
-                                      Math.ceil(timerState.displayMs / 1000) %
-                                        60,
+                                      Math.ceil(timerState.displayMs / 1000) % 60,
                                     ).padStart(2, "0")}
                                   </span>
                                 </div>
@@ -975,15 +806,21 @@ export default function ShopBrowser({
                           </div>
                         )}
 
-                        {isServed && (
-                          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-green-700 bg-green-50 px-2.5 py-1 rounded-lg border border-green-200 w-max">
-                            ✓ Served
+                        {isServing && (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200 w-max">
+                            🪑 Being served
                           </span>
                         )}
 
-                        {isCancelled && (
+                        {isCompleted && (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-green-700 bg-green-50 px-2.5 py-1 rounded-lg border border-green-200 w-max">
+                            ✓ Completed
+                          </span>
+                        )}
+
+                        {isNoShow && (
                           <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-600 bg-red-50 px-2.5 py-1 rounded-lg border border-red-200 w-max">
-                            ✕ Canceled
+                            ✕ No show
                           </span>
                         )}
                       </div>
@@ -1000,7 +837,7 @@ export default function ShopBrowser({
                         <QrIcon className="size-4" /> Show QR Code
                       </button>
 
-                      {(isPending || isCalled) && (
+                      {(isPending || isNotified || isServing) && (
                         <button
                           onClick={() => cancelTicket(token.id)}
                           className="text-xs font-bold text-red-500 hover:text-red-700 transition"
@@ -1009,7 +846,7 @@ export default function ShopBrowser({
                         </button>
                       )}
 
-                      {(isServed || isCancelled) && (
+                      {(isCompleted || isNoShow) && (
                         <div className="flex gap-2">
                           <button
                             onClick={() => dismissTicket(token.id)}
@@ -1104,7 +941,7 @@ export default function ShopBrowser({
               const hasActiveQueue = myActiveTickets.some(
                 (t) =>
                   t.shopId === shop.id &&
-                  (t.status === "PENDING" || t.status === "CALLED"),
+                  (t.status === "PENDING" || t.status === "NOTIFIED" || t.status === "SERVING"),
               );
 
               return (
@@ -1264,10 +1101,10 @@ export default function ShopBrowser({
                 <div className="bg-white p-2 rounded-2xl border border-bgSurface shadow-sm text-center">
                   <UsersIcon className="size-6 inline" />
                   <h4 className="font-bold text-sm text-brandPrimary">
-                    Live Queue
+                    In Queue
                   </h4>
                   <p className="text-xs text-textMuted mt-1 leading-tight font-bold">
-                    {liveQueueCount} groups
+                    {liveQueueCount} active
                   </p>
                 </div>
                 <div className="bg-white p-2 rounded-2xl border border-bgSurface shadow-sm text-center">
@@ -1310,7 +1147,7 @@ export default function ShopBrowser({
               {myActiveTickets.some(
                 (t) =>
                   t.shopId === activeShopDetail.id &&
-                  (t.status === "PENDING" || t.status === "CALLED"),
+                  (t.status === "PENDING" || t.status === "NOTIFIED" || t.status === "SERVING"),
               ) ? (
                 <button
                   disabled
@@ -1375,8 +1212,7 @@ export default function ShopBrowser({
                 />
               </div>
               <p className="text-xs text-textMuted font-semibold leading-relaxed max-w-xs">
-                Present this QR code to the merchant at the service counter when
-                your ticket number is called.
+                Present this QR code to the merchant when your ticket is called.
               </p>
             </div>
           </div>
@@ -1388,13 +1224,20 @@ export default function ShopBrowser({
         <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[105] flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden relative">
             <div className="bg-orange-50 px-6 pt-8 pb-6 text-center border-b border-orange-100">
-              <div className="text-6xl mb-4 animate-bounce">⚠️</div>
-              <h2 className="text-2xl font-black text-orange-600 mb-2">
-                3 Minutes Passed!
+              <div className="text-6xl mb-4">⏰</div>
+              <h2 className="text-2xl font-black text-slate-800 mb-2">
+                Time&apos;s Up!
               </h2>
               <p className="text-textMuted text-sm leading-relaxed max-w-[280px] mx-auto font-medium">
-                You have 1 minute left to reach the counter before your ticket
-                is automatically canceled to keep the line moving.
+                Your 3-minute window to reach the counter has passed. Choose an
+                option below.
+              </p>
+              <p className="mt-3 text-xs text-textMuted">
+                Auto-canceling in{" "}
+                <span className="font-black text-orange-500 text-sm">
+                  {expiredCountdown}
+                </span>
+                s if no action taken.
               </p>
             </div>
             <div className="p-6 flex flex-col gap-3">
@@ -1413,62 +1256,17 @@ export default function ShopBrowser({
                 }}
                 className="w-full bg-brandPrimary hover:bg-opacity-90 text-white py-3.5 rounded-xl font-bold text-sm transition shadow-md"
               >
-                ReQueue (Go to End)
-              </button>
-              <button
-                onClick={() => {
-                  cancelTicket(warningTokenId);
-                  setIsWarningModalOpen(false);
-                  setWarningTokenId(null);
-                }}
-                className="w-full bg-red-100 hover:bg-red-200 text-red-700 py-3.5 rounded-xl font-bold text-sm transition"
-              >
-                Cancel Ticket
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── EXPIRED (AUTO CANCELLED) MODAL ──────────────────────────────────── */}
-      {isExpiredModalOpen && expiredTokenId && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[105] flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden relative">
-            <div className="bg-red-50 px-6 pt-8 pb-6 text-center">
-              <div className="text-6xl mb-4">⏰</div>
-              <h2 className="text-2xl font-black text-red-600 mb-2">
-                Time's Up!
-              </h2>
-              <p className="text-textMuted text-xs leading-relaxed max-w-[280px] mx-auto font-medium">
-                Your 3-minute window to reach the counter has passed. Your
-                ticket was auto-canceled.
-              </p>
-            </div>
-            <div className="p-6 flex flex-col gap-3">
-              <button
-                onClick={async () => {
-                  const token = tickets.find((t) => t.id === expiredTokenId);
-                  if (token) {
-                    dismissTicket(token.id);
-                    await confirmIssueToken(
-                      token.shopId,
-                      token.personCount || 1,
-                    );
-                  }
-                  setIsExpiredModalOpen(false);
-                }}
-                className="w-full bg-brandPrimary hover:bg-opacity-90 text-white py-3.5 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2 shadow-md"
-              >
                 Rejoin Queue (Go to End)
               </button>
               <button
-                onClick={() => {
-                  dismissTicket(expiredTokenId);
-                  setIsExpiredModalOpen(false);
+                onClick={async () => {
+                  await cancelTicket(warningTokenId);
+                  setIsWarningModalOpen(false);
+                  setWarningTokenId(null);
                 }}
                 className="w-full bg-red-50 hover:bg-red-100 text-red-600 py-3.5 rounded-xl font-bold text-sm transition"
               >
-                Dismiss Alert
+                Cancel My Token
               </button>
             </div>
           </div>
