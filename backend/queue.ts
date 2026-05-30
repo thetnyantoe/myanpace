@@ -3,7 +3,7 @@
 import { cookies } from "next/headers";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
-import { getShopSession } from "@/backend/session";
+import { clearSession, getShopSession } from "@/backend/session";
 import {
   ACTIVE_QUEUE_STATUSES,
   type TicketStatus,
@@ -12,6 +12,11 @@ import {
 export type QueueActionResult<T = unknown> =
   | { ok: true; data: T }
   | { ok: false; error: string };
+
+// Columns safe to return to any authenticated/anonymous reader.
+// Excludes `subscription` (push endpoint) and `customerId` (PII linkage).
+const PUBLIC_TICKET_COLUMNS =
+  "id, shopId, ticketNo, status, createdAt, notifiedAt, servedAt, personCount";
 
 async function requireCustomer() {
   const supabase = createClient(await cookies());
@@ -30,15 +35,37 @@ async function requireManagerShop(shopId?: string) {
   if (shopId && shopSession.id !== shopId) {
     return { ok: false as const, error: "Not authorized for this shop." };
   }
+
+  // Verify the shop still exists / hasn't been deleted since login.
+  const admin = createAdminClient();
+  const { data: shop, error } = await admin
+    .from("Shop")
+    .select("id")
+    .eq("id", shopSession.id)
+    .maybeSingle();
+
+  if (error) {
+    return { ok: false as const, error: error.message };
+  }
+  if (!shop) {
+    await clearSession();
+    return { ok: false as const, error: "Shop no longer exists. Please log in again." };
+  }
+
   return { ok: true as const, shopId: shopSession.id };
 }
 
+/**
+ * Public, read-only feed used by the customer ShopBrowser to compute "X ahead
+ * of you" counts. Intentionally strips `subscription` and `customerId` so the
+ * endpoint cannot be used to harvest push endpoints or link tickets to users.
+ */
 export async function fetchAllTickets(): Promise<QueueActionResult<any[]>> {
   try {
     const admin = createAdminClient();
     const { data, error } = await admin
       .from("Ticket")
-      .select("*")
+      .select(PUBLIC_TICKET_COLUMNS)
       .order("createdAt", { ascending: true });
 
     if (error) return { ok: false, error: error.message };
@@ -75,6 +102,8 @@ export async function fetchShopTickets(
   }
 }
 
+const MAX_TICKET_CREATE_RETRIES = 3;
+
 export async function createQueueTicket(
   shopId: string,
   personCount: number,
@@ -91,40 +120,66 @@ export async function createQueueTicket(
   try {
     const admin = createAdminClient();
 
-    const { data: shopTickets, error: loadError } = await admin
-      .from("Ticket")
-      .select("id, ticketNo, status")
-      .eq("shopId", shopId);
+    // Retry loop guards against the read-then-insert race where two concurrent
+    // customers compute the same nextTicketNo. Relies on a unique
+    // (shopId, ticketNo) index to surface the conflict.
+    let ticket: any = null;
+    let queuePosition = 0;
+    let lastError: string | null = null;
 
-    if (loadError) return { ok: false, error: loadError.message };
+    for (let attempt = 0; attempt < MAX_TICKET_CREATE_RETRIES; attempt++) {
+      const { data: shopTickets, error: loadError } = await admin
+        .from("Ticket")
+        .select("id, ticketNo, status")
+        .eq("shopId", shopId);
 
-    const tickets = shopTickets ?? [];
-    const maxTicket = tickets.reduce(
-      (max, t) => Math.max(max, t.ticketNo || 0),
-      0,
-    );
-    const nextTicketNo = maxTicket + 1;
-    const activeCount = tickets.filter((t) =>
-      ACTIVE_QUEUE_STATUSES.includes(t.status),
-    ).length;
-    const queuePosition = activeCount + 1;
+      if (loadError) return { ok: false, error: loadError.message };
 
-    const { data, error } = await admin
-      .from("Ticket")
-      .insert({
-        shopId,
-        status: "PENDING",
-        ticketNo: nextTicketNo,
-        personCount,
-      })
-      .select()
-      .single();
+      const tickets = shopTickets ?? [];
+      const maxTicket = tickets.reduce(
+        (max, t) => Math.max(max, t.ticketNo || 0),
+        0,
+      );
+      const nextTicketNo = maxTicket + 1;
+      const activeCount = tickets.filter((t) =>
+        ACTIVE_QUEUE_STATUSES.includes(t.status),
+      ).length;
+      queuePosition = activeCount + 1;
 
-    if (error || !data) {
+      const { data, error } = await admin
+        .from("Ticket")
+        .insert({
+          shopId,
+          customerId: auth.userId,
+          status: "PENDING",
+          ticketNo: nextTicketNo,
+          personCount,
+        })
+        .select()
+        .single();
+
+      if (!error && data) {
+        ticket = data;
+        break;
+      }
+
+      // Postgres unique_violation = 23505. Retry to recompute nextTicketNo.
+      const code = (error as { code?: string } | null)?.code;
+      if (code === "23505") {
+        lastError = error?.message ?? "Ticket number conflict.";
+        continue;
+      }
+
       return { ok: false, error: error?.message ?? "Failed to create ticket." };
     }
 
-    let ticket = data;
+    if (!ticket) {
+      return {
+        ok: false,
+        error: lastError ?? "Failed to create ticket after retries.",
+      };
+    }
+
     const immediateCall = queuePosition === 1;
 
     if (immediateCall) {
@@ -132,14 +187,14 @@ export async function createQueueTicket(
       const { data: notified, error: notifyError } = await admin
         .from("Ticket")
         .update({ status: "NOTIFIED", notifiedAt: nowIso })
-        .eq("id", data.id)
+        .eq("id", ticket.id)
         .select()
         .single();
 
       if (notifyError) {
         return { ok: false, error: notifyError.message };
       }
-      ticket = notified ?? data;
+      ticket = notified ?? ticket;
     }
 
     return {
@@ -173,10 +228,17 @@ export async function updateQueueTicketStatus(
     if (findError) return { ok: false, error: findError.message };
     if (!existing) return { ok: false, error: "Ticket not found for this shop." };
 
+    // Idempotency: no-op if already in the target state. Prevents duplicate
+    // writes when multiple manager tabs fire the same auto-cancel.
+    if (existing.status === newStatus) {
+      return { ok: true, data: existing };
+    }
+
     const nowIso = new Date().toISOString();
     const updatePayload: Record<string, string> = { status: newStatus };
     if (newStatus === "NOTIFIED") updatePayload.notifiedAt = nowIso;
     if (newStatus === "COMPLETED") updatePayload.servedAt = nowIso;
+    if (newStatus === "NOSHOW") updatePayload.noshowAt = nowIso;
 
     const { data, error } = await admin
       .from("Ticket")
@@ -204,22 +266,28 @@ export async function cancelQueueTicket(
       const admin = createAdminClient();
       const { data: existing, error: findError } = await admin
         .from("Ticket")
-        .select("id, customerId")
+        .select("id, customerId, status")
         .eq("id", ticketId)
         .maybeSingle();
 
       if (findError) return { ok: false, error: findError.message };
       if (!existing) return { ok: false, error: "Ticket not found." };
-      if (
-        existing.customerId &&
-        existing.customerId !== customerAuth.userId
-      ) {
+
+      // Strict ownership: a null customerId is treated as untrusted/legacy and
+      // cannot be cancelled by an arbitrary logged-in customer.
+      if (!existing.customerId || existing.customerId !== customerAuth.userId) {
         return { ok: false, error: "Not authorized to cancel this ticket." };
       }
 
+      // Idempotency
+      if (existing.status === "NOSHOW") {
+        return { ok: true, data: existing };
+      }
+
+      const nowIso = new Date().toISOString();
       const { data, error } = await admin
         .from("Ticket")
-        .update({ status: "NOSHOW" })
+        .update({ status: "NOSHOW", noshowAt: nowIso })
         .eq("id", ticketId)
         .select()
         .single();
@@ -246,6 +314,24 @@ export async function saveTicketSubscription(
 
   try {
     const admin = createAdminClient();
+
+    // Ownership check: only the customer who owns the ticket may attach
+    // a push subscription to it.
+    const { data: existing, error: findError } = await admin
+      .from("Ticket")
+      .select("id, customerId")
+      .eq("id", ticketId)
+      .maybeSingle();
+
+    if (findError) return { ok: false, error: findError.message };
+    if (!existing) return { ok: false, error: "Ticket not found." };
+    if (!existing.customerId || existing.customerId !== auth.userId) {
+      return {
+        ok: false,
+        error: "Not authorized to set subscription on this ticket.",
+      };
+    }
+
     const { error } = await admin
       .from("Ticket")
       .update({ subscription })
