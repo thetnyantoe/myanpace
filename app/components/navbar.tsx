@@ -6,7 +6,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { toast } from "react-toastify";
 import Image from "next/image";
 import logo from "../../public/logo.jpg";
-import { logout } from "../../backend/actions";
+import { logout } from "../../backend/actions"; // Kept server action logout
 
 import {
   Bell,
@@ -24,16 +24,16 @@ import {
   Shield,
   ArrowUp,
   Bot,
+  Globe,
 } from "lucide-react";
 import { AiOverlay } from "./aioverlay";
-import StarIcon from "@/public/icons/star";
 
+// Flexible type definition matching the data returned from your session file
 type NavBarProps = {
   initialUser: {
     name: string;
     email: string | null;
     role: string;
-    score: number | null;
     brand: string | null;
     avatar?: string;
   } | null;
@@ -53,6 +53,8 @@ export default function NavBar({ initialUser }: NavBarProps) {
   const [scrolled, setScrolled] = useState(false);
   const scannerRef = useRef<{ clear: () => Promise<void> } | null>(null);
   const [searchInput, setSearchInput] = useState("");
+  const [langMenuOpen, setLangMenuOpen] = useState(false);
+  const [currentLang, setCurrentLang] = useState("Eng");
 
   const closeQrScanner = async () => {
     setQrScanOpen(false);
@@ -132,13 +134,8 @@ export default function NavBar({ initialUser }: NavBarProps) {
   if (!mounted) return null;
 
   // Manager dashboard owns its own header — hide the global navbar there.
-  if (
-    pathname === "/m" ||
-    pathname?.startsWith("/m/") ||
-    pathname === "/o" ||
-    pathname?.startsWith("/o/")
-  )
-    return null;
+  if (pathname === "/m" || pathname?.startsWith("/m/")) return null;
+
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchInput.trim()) {
@@ -146,6 +143,7 @@ export default function NavBar({ initialUser }: NavBarProps) {
       router.push(`/shops?search=${encodeURIComponent(searchInput.trim())}`);
     }
   };
+
   return (
     <>
       {/* Desktop Header */}
@@ -179,7 +177,7 @@ export default function NavBar({ initialUser }: NavBarProps) {
 
         {/* Center */}
         <div className="flex items-center gap-4">
-          <nav className="bg-[#1d2846]/95 backdrop-blur-xl text-white rounded-full px-4 py-1.5 flex items-center gap-6 shadow-2xl border border-white/10">
+          <nav className="bg-[#1d2846]/95 backdrop-blur-xl text-white rounded-full px-8 py-2 flex items-center gap-6 shadow-2xl border border-white/10">
             <Link
               href="/shops"
               className="text-sm font-medium hover:text-[#d6d6d5] transition-colors"
@@ -219,13 +217,32 @@ export default function NavBar({ initialUser }: NavBarProps) {
             >
               <Heart className="w-5 h-5" />
             </Link>
-            <button
-              onClick={() => toast.info("No new notifications")}
-              className="hover:text-[#d6d6d5] transition-colors relative"
-              aria-label="Notifications"
-            >
-              <Bell className="w-5 h-5" />
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => setLangMenuOpen(!langMenuOpen)}
+                className="hover:text-[#d6d6d5] transition-colors flex items-center gap-1"
+                aria-label="Language"
+              >
+                <Globe className="w-5 h-5" />
+                <span className="text-sm font-medium">{currentLang}</span>
+              </button>
+              {langMenuOpen && (
+                <div className="absolute top-full right-0 mt-5 w-36 bg-white rounded-xl shadow-lg border border-[#d6d6d5] py-2 z-50 text-[#1d2846] flex flex-col overflow-hidden">
+                  <button
+                    onClick={() => { setCurrentLang('Eng'); setLangMenuOpen(false); }}
+                    className={`px-4 py-2 text-sm text-left hover:bg-[#f3f4f5] transition-colors ${currentLang === 'Eng' ? 'font-bold' : 'font-medium'}`}
+                  >
+                    English
+                  </button>
+                  <button
+                    onClick={() => { setCurrentLang('Mm'); setLangMenuOpen(false); }}
+                    className={`px-4 py-2 text-sm text-left hover:bg-[#f3f4f5] transition-colors ${currentLang === 'Mm' ? 'font-bold' : 'font-medium'}`}
+                  >
+                    Myanmar (Mm)
+                  </button>
+                </div>
+              )}
+            </div>
             <button
               onClick={() => setSearchOpen(true)}
               className="bg-white/10 border border-white/20 rounded-full px-4 py-2 flex items-center gap-3 hover:bg-white/20 transition-colors"
@@ -238,7 +255,7 @@ export default function NavBar({ initialUser }: NavBarProps) {
           {/* PaceAI Button */}
           <button
             onClick={() => setAiOpen(true)}
-            className="cursor-pointer w-[45px] h-[45px] rounded-full bg-[#1d2846] relative overflow-hidden shadow-[0_4px_15px_rgba(29,40,70,0.3)] flex items-center justify-center group hover:scale-105 transition-all"
+            className="cursor-pointer w-[55px] h-[55px] rounded-full bg-[#1d2846] relative overflow-hidden shadow-[0_4px_15px_rgba(29,40,70,0.3)] flex items-center justify-center group hover:scale-105 transition-all"
           >
             <div className="absolute inset-0 animate-spin-slow bg-[conic-gradient(from_0deg,transparent_0%,rgba(255,255,255,0.05)_25%,transparent_50%,rgba(29,40,70,0.5)_75%,transparent_100%)]" />
             <div className="flex items-center gap-[2px] relative z-10">
@@ -292,9 +309,9 @@ export default function NavBar({ initialUser }: NavBarProps) {
       </header>
 
       {/* Mobile Header */}
-      <header className="min-[1130px]:hidden fixed top-0 left-0 w-full z-50 bg-[#f3f4f5]/95 backdrop-blur-md border-b border-[#d6d6d5] px-5 py-3 flex items-center justify-between shadow-sm">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="flex items-center gap-2">
+      <header className="min-[1130px]:hidden fixed top-0 left-0 w-full z-50 bg-[#f3f4f5]/95 backdrop-blur-md border-b border-[#d6d6d5] px-5 py-3 flex items-center justify-between shadow-sm relative">
+        <div className="flex items-center z-10">
+          <Link href="/" className="flex items-center">
             <Image
               src={logo}
               width={50}
@@ -302,22 +319,14 @@ export default function NavBar({ initialUser }: NavBarProps) {
               className="size-9 rounded-md"
               alt="logo"
             />
-            <div>
-              <p className="text-[9px] uppercase tracking-[0.2em] font-bold text-[#949492]">
-                MyanPace
-              </p>
-              <p className="text-xs font-bold text-[#1d2846]">
-                Yangon, Myanmar
-              </p>
-            </div>
           </Link>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Pace AI */}
+        {/* Dynamic Island - PaceAI */}
+        <div className="absolute left-1/2 -translate-x-1/2 z-20">
           <button
             onClick={() => setAiOpen(true)}
-            className="bg-[#1d2846] text-white rounded-2xl px-4 h-8 flex items-center gap-2 shadow-md"
+            className="bg-[#1d2846] text-white rounded-full px-5 h-9 flex items-center gap-2 shadow-lg active:scale-95 transition-transform"
           >
             <div className="flex items-center gap-[2px]">
               {[1, 2, 3, 4].map((bar) => (
@@ -331,20 +340,47 @@ export default function NavBar({ initialUser }: NavBarProps) {
                 />
               ))}
             </div>
-            <span className="text-[11px] font-bold tracking-wider">PaceAI</span>
+            <span className="text-xs font-bold tracking-wider">PaceAI</span>
           </button>
+        </div>
 
+        <div className="flex items-center gap-2 z-10">
           <button
             onClick={() => setSearchOpen(true)}
             className="w-9 h-9 flex items-center justify-center text-[#1d2846]"
           >
             <Search className="w-5 h-5" />
           </button>
+          
+          <div className="relative flex items-center">
+            <button
+              onClick={() => setLangMenuOpen(!langMenuOpen)}
+              className="w-9 h-9 flex items-center justify-center text-[#1d2846]"
+            >
+              <Globe className="w-5 h-5" />
+            </button>
+            {langMenuOpen && (
+              <div className="absolute top-full right-0 mt-2 w-36 bg-white rounded-xl shadow-lg border border-[#d6d6d5] py-2 z-50 flex flex-col overflow-hidden text-[#1d2846]">
+                <button
+                  onClick={() => { setCurrentLang('Eng'); setLangMenuOpen(false); }}
+                  className={`px-4 py-2 text-sm text-left hover:bg-[#f3f4f5] transition-colors ${currentLang === 'Eng' ? 'font-bold' : 'font-medium'}`}
+                >
+                  English
+                </button>
+                <button
+                  onClick={() => { setCurrentLang('Mm'); setLangMenuOpen(false); }}
+                  className={`px-4 py-2 text-sm text-left hover:bg-[#f3f4f5] transition-colors ${currentLang === 'Mm' ? 'font-bold' : 'font-medium'}`}
+                >
+                  Myanmar
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
       {/* Mobile Bottom Nav */}
-      <nav className="fixed bottom-0 left-0 w-full min-[1130px]:hidden bg-white/95 backdrop-blur-xl border-t border-[#d6d6d5] flex items-center justify-around px-2 pt-2 pb-6 h-[75px] z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.03)]">
+      <nav className="fixed bottom-0 left-0 w-full min-[1130px]:hidden bg-white/95 backdrop-blur-xl border-t border-[#d6d6d5] grid grid-cols-5 items-center justify-items-center pt-2 pb-6 h-[75px] z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.03)]">
         <Link
           href="/shops"
           className="flex flex-col items-center gap-1 text-[#1d2846]"
@@ -392,10 +428,7 @@ export default function NavBar({ initialUser }: NavBarProps) {
             >
               <X className="w-5 h-5 text-[#1d2846]" />
             </button>
-            <form
-              onSubmit={handleSearchSubmit}
-              className="flex-1 bg-[#f3f4f5] border border-[#d6d6d5] rounded-xl px-4 py-3 flex items-center gap-3"
-            >
+            <form onSubmit={handleSearchSubmit} className="flex-1 bg-[#f3f4f5] border border-[#d6d6d5] rounded-xl px-4 py-3 flex items-center gap-3">
               <Search className="w-4 h-4 text-[#949492]" />
               <input
                 autoFocus
@@ -412,7 +445,7 @@ export default function NavBar({ initialUser }: NavBarProps) {
               Suggested Spots
             </h3>
             {searchInput.trim() ? (
-              <button
+              <button 
                 onClick={(e) => handleSearchSubmit(e as any)}
                 className="bg-white w-full rounded-2xl border border-[#d6d6d5] p-5 text-center text-sm text-[#1d2846] hover:bg-gray-50 transition font-bold shadow-sm"
               >
@@ -470,16 +503,33 @@ export default function NavBar({ initialUser }: NavBarProps) {
                   </p>
                 )}
                 {user?.brand && (
-                  <span className="inline-block mt-2 text-[10px] bg-[#1d2846]/10 text-[#1d2846] px-2 py-0.5 rounded-md font-[900]">
+                  <span className="inline-block mt-2 text-[10px] bg-[#1d2846]/10 text-[#1d2846] px-2 py-0.5 rounded-md font-bold">
                     Brand: {user.brand}
                   </span>
                 )}
               </div>
             </div>
-            <div className="bg-white rounded-3xl border border-[#d6d6d5] p-5 flex items-center gap-2 shadow-sm mb-6 jost text-lg">
-              <StarIcon /> {user.score} Scores
-            </div>
+
             <div className="space-y-6">
+              {/* Preferences — disabled until backed by real settings
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-[#949492] mb-3 pl-1">
+                  Settings
+                </h3>
+                <div className="bg-white rounded-2xl border border-[#d6d6d5] overflow-hidden shadow-sm">
+                  <button className="w-full px-5 py-4 flex items-center justify-between hover:bg-[#f3f4f5] transition-colors">
+                    <div className="flex items-center gap-3">
+                      <Settings className="w-5 h-5 text-[#949492]" />
+                      <span className="font-medium text-sm text-[#1d2846]">
+                        Preferences
+                      </span>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-[#949492]" />
+                  </button>
+                </div>
+              </div>
+              */}
+
               {user ? (
                 <form
                   action={async () => {

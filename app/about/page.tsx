@@ -120,7 +120,7 @@ export default function AboutPage() {
             </h1>
             
             <p className="text-[#949492] text-xl lg:text-2xl max-w-[800px] leading-[1.7] font-medium mb-12">
-              MyanPace is Myanmar's premier digital infrastructure for waitlist optimization and queue management. We eradicate the friction of waiting, restoring dignity to the dining experience.
+              MyanPace is Myanmar's premier digital infrastructure for waitlist optimization and queue management. We eradicate the friction of waiting, restoring dignity to the dining experience while driving merchant revenue.
             </p>
           </section>
 
@@ -159,7 +159,7 @@ export default function AboutPage() {
                 <div className="relative w-full h-[600px] rounded-[2.5rem] overflow-hidden border border-white/60 shadow-2xl">
                   <img 
                     src="https://images.unsplash.com/photo-1552566626-52f8b828add9?w=1200&auto=format&fit=crop&q=80" 
-                    alt="Restaurant Management" 
+                    alt="Restaurant Management Dashboard" 
                     className="w-full h-full object-cover" 
                   />
                   <div className="absolute inset-0 bg-white/10 backdrop-blur-[2px]"></div>
@@ -175,7 +175,7 @@ export default function AboutPage() {
                     </div>
                     <div className="space-y-4">
                       <div>
-                        <p className="text-[10px] text-[#949492] font-bold uppercase tracking-wider mb-1">Throughput</p>
+                        <p className="text-[10px] text-[#949492] font-bold uppercase tracking-wider mb-1">Table Throughput</p>
                         <div className="w-full bg-[#f3f4f5] h-2 rounded-full overflow-hidden">
                           <div className="bg-[#1d2846] w-[94%] h-full"></div>
                         </div>
@@ -196,10 +196,10 @@ export default function AboutPage() {
                   The End of <br /><span className="text-[#949492] italic font-light">Physical Waiting.</span>
                 </h2>
                 <p className="text-[#1d2846]/80 text-lg leading-relaxed font-medium mb-6">
-                  Before MyanPace, dining at premium venues in Yangon meant unpredictability, crowded entrances, and frustrated patrons. The traditional walk-in model was fundamentally broken, causing restaurants to lose revenue and diners to lose their most precious resource: time.
+                  Before MyanPace, dining at premium venues meant unpredictability, crowded entrances, and frustrated patrons. The traditional walk-in model was fundamentally broken, causing restaurants to lose revenue and diners to lose their most precious resource: time.
                 </p>
                 <p className="text-[#1d2846]/80 text-lg leading-relaxed font-medium mb-12">
-                  We architected a unified ecosystem. By shifting the physical queue into a smart, predictive digital environment, we empower patrons to wait on their own terms while providing restaurants with granular data to optimize table turnover.
+                  We architected a unified commercial ecosystem. By shifting the physical queue into a smart, predictive digital environment, we empower patrons to wait on their own terms while providing merchants with granular data to optimize table turnover and capture lost sales.
                 </p>
                 
                 <div className="grid grid-cols-2 gap-8 w-full">
@@ -209,7 +209,7 @@ export default function AboutPage() {
                   </div>
                   <div>
                     <p className="text-5xl font-bold text-[#1d2846] mb-2">300+</p>
-                    <p className="text-xs uppercase tracking-widest font-bold text-[#949492]">Enterprise Local Partners</p>
+                    <p className="text-xs uppercase tracking-widest font-bold text-[#949492]">Active Enterprise Partners</p>
                   </div>
                 </div>
               </div>
@@ -220,7 +220,7 @@ export default function AboutPage() {
           <section className="max-w-[1300px] mx-auto w-full px-6 mb-32 opacity-0 animate-slide-up-slow">
             <div className="text-center mb-16">
               <h2 className="text-4xl font-bold text-[#1d2846] mb-4 tracking-tight">Architected for Scale</h2>
-              <p className="text-[#949492] text-lg font-medium max-w-[600px] mx-auto">The foundational pillars that make MyanPace the industry standard for hospitality management.</p>
+              <p className="text-[#949492] text-lg font-medium max-w-[600px] mx-auto">The foundational pillars that make MyanPace the industry standard for commercial hospitality management.</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -240,7 +240,7 @@ export default function AboutPage() {
                 </div>
                 <h3 className="text-2xl font-bold text-[#1d2846] mb-4">Enterprise Security</h3>
                 <p className="text-[#1d2846]/70 font-medium leading-relaxed">
-                  Built on a zero-trust architecture. We protect venue operational data and consumer privacy with military-grade encryption and decentralized token verification.
+                  Built on a zero-trust architecture. We protect venue operational data and consumer privacy with military-grade encryption and secure token verification.
                 </p>
               </div>
 
@@ -269,9 +269,9 @@ export default function AboutPage() {
                   Whether you are a diner looking to reclaim your time or an enterprise ready to optimize operations, the future of hospitality is here.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
-                  <button className="px-10 py-5 rounded-2xl bg-[#1d2846] text-white font-bold text-lg shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all">
+                  <a href="/shops" className="px-10 py-5 rounded-2xl bg-[#1d2846] text-white font-bold text-lg shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all flex items-center justify-center">
                     Explore Venues
-                  </button>
+                  </a>
                   <button className="px-10 py-5 rounded-2xl bg-white/80 backdrop-blur-md border border-white text-[#1d2846] font-bold text-lg shadow-sm hover:bg-white transition-all">
                     Partner With Us
                   </button>
