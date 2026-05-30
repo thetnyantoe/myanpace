@@ -21,45 +21,6 @@ type AiOverlayProps = {
 type Message = { role: "user" | "assistant"; content: string };
 type Lang = "en" | "my";
 
-interface SpeechRecognitionAlternative {
-  transcript: string;
-  confidence: number;
-}
-interface SpeechRecognitionResult {
-  readonly length: number;
-  readonly [index: number]: SpeechRecognitionAlternative;
-}
-interface SpeechRecognitionResultList {
-  readonly length: number;
-  readonly [index: number]: SpeechRecognitionResult;
-}
-interface SpeechRecognitionEvent extends Event {
-  readonly results: SpeechRecognitionResultList;
-}
-interface SpeechRecognition extends EventTarget {
-  lang: string;
-  interimResults: boolean;
-  maxAlternatives: number;
-  onstart: (() => void) | null;
-  onresult: ((event: SpeechRecognitionEvent) => void) | null;
-  onerror: (() => void) | null;
-  onend: (() => void) | null;
-  start(): void;
-  stop(): void;
-}
-
-// We deliberately do NOT augment Window here — `app/paceai/ChatClient.tsx`
-// already declares it, and conflicting `declare global` blocks fail typecheck.
-type SpeechRecognitionCtor = new () => SpeechRecognition;
-function getSpeechRecognitionCtor(): SpeechRecognitionCtor | null {
-  if (typeof window === "undefined") return null;
-  const w = window as unknown as {
-    SpeechRecognition?: SpeechRecognitionCtor;
-    webkitSpeechRecognition?: SpeechRecognitionCtor;
-  };
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
-}
-
 const UI = {
   en: {
     heroTitle: 'Call "PacePace" to Chat',
@@ -68,12 +29,12 @@ const UI = {
     placeholder: "Ask about shops or ask to take a token...",
     voiceActive: "Voice Active",
     secure: "Secure Context",
-    listening: "Listening…",
-    speakTip: "Tap mic and speak",
+    recording: "Recording… tap mic to stop",
+    transcribing: "Transcribing…",
     spinnerHint: "PacePace is checking the live data…",
-    voiceUnsupported: "Voice not supported in this browser. Try Chrome.",
-    voiceMmCaption: "Burmese voice works best in Chrome — quality varies.",
+    voiceUnsupported: "Voice input is not supported in this browser.",
     micBlocked: "Microphone access denied or unavailable.",
+    transcribeFailed: "Couldn't transcribe that — please try again.",
   },
   my: {
     heroTitle: '"PacePace" ကိုခေါ်ပြီး စကားပြောပါ',
@@ -82,15 +43,32 @@ const UI = {
     placeholder: "ဆိုင်အကြောင်း မေးပါ၊ ဒါမှမဟုတ် token ယူပေးပါ ပြောပါ...",
     voiceActive: "အသံ ဖွင့်ထား",
     secure: "လုံခြုံသော ဆက်သွယ်မှု",
-    listening: "နားထောင်နေသည်…",
-    speakTip: "မိုက်ကို နှိပ်ပြီး ပြောပါ",
+    recording: "အသံဖမ်းနေသည်… ရပ်ရန် မိုက်ကို နှိပ်ပါ",
+    transcribing: "စာသားပြောင်းနေသည်…",
     spinnerHint: "PacePace က အချက်အလက် စစ်နေသည်…",
-    voiceUnsupported: "ဤ browser တွင် voice အသုံးပြု၍ မရပါ။ Chrome သုံးကြည့်ပါ။",
-    voiceMmCaption:
-      "မြန်မာအသံစစ်ဆေးခြင်းသည် Chrome တွင် အကောင်းဆုံးအလုပ်လုပ်သည် — အရည်အသွေး ပြောင်းလဲနိုင်သည်။",
+    voiceUnsupported: "ဤ browser တွင် voice input မရရှိနိုင်ပါ။",
     micBlocked: "မိုက်ခရိုဖုန်း သုံးခွင့် မရရှိပါ။",
+    transcribeFailed: "ဖမ်းယူ၍မရပါ — ထပ်စမ်းကြည့်ပါ။",
   },
 };
+
+// Cap a single voice clip — Whisper's hard limit is 25MB but most demos won't
+// need more than ~60s. We auto-stop at this duration to keep costs predictable.
+const MAX_RECORD_MS = 60_000;
+
+function pickRecorderMime(): string | undefined {
+  if (typeof MediaRecorder === "undefined") return undefined;
+  const candidates = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/mp4",
+    "audio/ogg;codecs=opus",
+  ];
+  for (const c of candidates) {
+    if (MediaRecorder.isTypeSupported(c)) return c;
+  }
+  return undefined;
+}
 
 export function AiOverlay({ aiOpen, setAiOpen }: AiOverlayProps) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -98,17 +76,27 @@ export function AiOverlay({ aiOpen, setAiOpen }: AiOverlayProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lang, setLang] = useState<Lang>("en");
-  const [listening, setListening] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState<boolean | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const recordingStartRef = useRef<number>(0);
+  const autoStopRef = useRef<number | null>(null);
 
   const ui = UI[lang];
 
   useEffect(() => {
-    setVoiceSupported(getSpeechRecognitionCtor() !== null);
+    if (typeof window === "undefined") return;
+    const ok =
+      typeof navigator !== "undefined" &&
+      !!navigator.mediaDevices?.getUserMedia &&
+      typeof window.MediaRecorder !== "undefined";
+    setVoiceSupported(ok);
   }, []);
 
   useEffect(() => {
@@ -122,52 +110,148 @@ export function AiOverlay({ aiOpen, setAiOpen }: AiOverlayProps) {
     });
   }, [messages, loading]);
 
-  // Stop listening if the overlay closes or the language switches mid-session.
-  useEffect(() => {
-    if (!aiOpen && recognitionRef.current) {
-      recognitionRef.current.stop();
-      setListening(false);
+  const cleanupRecording = useCallback(() => {
+    if (autoStopRef.current !== null) {
+      window.clearTimeout(autoStopRef.current);
+      autoStopRef.current = null;
     }
-  }, [aiOpen]);
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    recorderRef.current = null;
+    chunksRef.current = [];
+  }, []);
 
-  const startListening = useCallback(() => {
-    const SR = getSpeechRecognitionCtor();
-    if (!SR) {
+  // Stop recording if the overlay closes mid-capture.
+  useEffect(() => {
+    if (!aiOpen && recorderRef.current?.state === "recording") {
+      recorderRef.current.stop();
+      setRecording(false);
+      cleanupRecording();
+    }
+  }, [aiOpen, cleanupRecording]);
+
+  const stopRecording = useCallback(() => {
+    if (recorderRef.current?.state === "recording") {
+      recorderRef.current.stop();
+    }
+  }, []);
+
+  const sendToWhisper = useCallback(
+    async (blob: Blob) => {
+      setTranscribing(true);
+      setError(null);
+      try {
+        const form = new FormData();
+        form.set(
+          "audio",
+          new File([blob], "clip.webm", { type: blob.type || "audio/webm" }),
+        );
+        form.set("lang", lang);
+
+        const res = await fetch("/api/transcribe", {
+          method: "POST",
+          body: form,
+        });
+
+        if (!res.ok) {
+          let msg = ui.transcribeFailed;
+          try {
+            const j = await res.json();
+            if (typeof j?.error === "string") msg = j.error;
+          } catch {
+            // not JSON — keep generic
+          }
+          setError(msg);
+          return;
+        }
+
+        const data = (await res.json()) as { text?: string };
+        const text = (data.text ?? "").trim();
+        if (text) {
+          setInput((prev) => (prev ? prev + " " + text : text));
+          inputRef.current?.focus();
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : ui.transcribeFailed);
+      } finally {
+        setTranscribing(false);
+      }
+    },
+    [lang, ui.transcribeFailed],
+  );
+
+  const startRecording = useCallback(async () => {
+    if (voiceSupported === false) {
       setError(ui.voiceUnsupported);
       return;
     }
     setError(null);
-    const rec = new SR();
-    rec.lang = lang === "my" ? "my-MM" : "en-US";
-    rec.interimResults = false;
-    rec.maxAlternatives = 1;
-    rec.onstart = () => setListening(true);
-    rec.onresult = (e: SpeechRecognitionEvent) => {
-      const transcript = e.results[0]?.[0]?.transcript ?? "";
-      if (transcript) setInput((prev) => (prev ? prev + " " + transcript : transcript));
+
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      setError(ui.micBlocked);
+      return;
+    }
+
+    const mimeType = pickRecorderMime();
+    let rec: MediaRecorder;
+    try {
+      rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    } catch {
+      stream.getTracks().forEach((t) => t.stop());
+      setError(ui.voiceUnsupported);
+      return;
+    }
+
+    chunksRef.current = [];
+    rec.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
+    };
+    rec.onstop = async () => {
+      const chunks = chunksRef.current;
+      const type = rec.mimeType || mimeType || "audio/webm";
+      cleanupRecording();
+      setRecording(false);
+      if (chunks.length === 0) return;
+      const blob = new Blob(chunks, { type });
+      if (blob.size === 0) return;
+      await sendToWhisper(blob);
     };
     rec.onerror = () => {
-      setListening(false);
+      cleanupRecording();
+      setRecording(false);
       setError(ui.micBlocked);
     };
-    rec.onend = () => setListening(false);
-    recognitionRef.current = rec;
-    try {
-      rec.start();
-    } catch {
-      setListening(false);
-    }
-  }, [lang, ui.voiceUnsupported, ui.micBlocked]);
 
-  const stopListening = useCallback(() => {
-    recognitionRef.current?.stop();
-    setListening(false);
-  }, []);
+    recorderRef.current = rec;
+    streamRef.current = stream;
+    recordingStartRef.current = Date.now();
+    rec.start();
+    setRecording(true);
+
+    // Auto-stop after MAX_RECORD_MS so a forgotten mic doesn't dump a huge
+    // upload (and bill against the OpenAI credit) when the user wanders off.
+    autoStopRef.current = window.setTimeout(() => {
+      if (recorderRef.current?.state === "recording") {
+        recorderRef.current.stop();
+      }
+    }, MAX_RECORD_MS);
+  }, [
+    voiceSupported,
+    cleanupRecording,
+    sendToWhisper,
+    ui.voiceUnsupported,
+    ui.micBlocked,
+  ]);
 
   const toggleMic = useCallback(() => {
-    if (listening) stopListening();
-    else startListening();
-  }, [listening, startListening, stopListening]);
+    if (recording) stopRecording();
+    else startRecording();
+  }, [recording, startRecording, stopRecording]);
 
   async function send() {
     const text = input.trim();
@@ -175,7 +259,7 @@ export function AiOverlay({ aiOpen, setAiOpen }: AiOverlayProps) {
 
     setError(null);
     setInput("");
-    if (listening) stopListening();
+    if (recording) stopRecording();
 
     const next: Message[] = [...messages, { role: "user", content: text }];
     setMessages(next);
@@ -263,7 +347,11 @@ export function AiOverlay({ aiOpen, setAiOpen }: AiOverlayProps) {
   if (!aiOpen) return null;
 
   const isEmpty = messages.length === 0;
-  const showMmCaption = lang === "my" && voiceSupported === true;
+  const placeholder = recording
+    ? ui.recording
+    : transcribing
+    ? ui.transcribing
+    : ui.placeholder;
 
   return (
     <div className="fixed inset-0 z-[200] bg-[#f3f4f5]/80 backdrop-blur-xl flex flex-col">
@@ -324,18 +412,12 @@ export function AiOverlay({ aiOpen, setAiOpen }: AiOverlayProps) {
             onKeyDown={onKeyDown}
             loading={loading}
             inputRef={inputRef}
-            listening={listening}
+            recording={recording}
+            transcribing={transcribing}
             onToggleMic={toggleMic}
             voiceSupported={voiceSupported}
-            placeholder={ui.placeholder}
-            listeningLabel={ui.listening}
+            placeholder={placeholder}
           />
-
-          {showMmCaption && (
-            <p className="text-xs text-[#1d2846]/60 mt-3 text-center max-w-md">
-              {ui.voiceMmCaption}
-            </p>
-          )}
 
           <div className="flex flex-wrap justify-center gap-4 mt-8">
             <div className="bg-white/50 backdrop-blur-md px-4 py-2 rounded-full border border-white/40 shadow-sm flex items-center gap-2 text-sm text-[#1d2846]">
@@ -378,17 +460,12 @@ export function AiOverlay({ aiOpen, setAiOpen }: AiOverlayProps) {
                 onKeyDown={onKeyDown}
                 loading={loading}
                 inputRef={inputRef}
-                listening={listening}
+                recording={recording}
+                transcribing={transcribing}
                 onToggleMic={toggleMic}
                 voiceSupported={voiceSupported}
-                placeholder={ui.placeholder}
-                listeningLabel={ui.listening}
+                placeholder={placeholder}
               />
-              {showMmCaption && (
-                <p className="text-xs text-[#1d2846]/60 mt-2 text-center">
-                  {ui.voiceMmCaption}
-                </p>
-              )}
             </div>
           </div>
         </div>
@@ -404,11 +481,11 @@ type ChatInputProps = {
   onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
   loading: boolean;
   inputRef: React.RefObject<HTMLInputElement | null>;
-  listening: boolean;
+  recording: boolean;
+  transcribing: boolean;
   onToggleMic: () => void;
   voiceSupported: boolean | null;
   placeholder: string;
-  listeningLabel: string;
 };
 
 function ChatInput({
@@ -418,34 +495,41 @@ function ChatInput({
   onKeyDown,
   loading,
   inputRef,
-  listening,
+  recording,
+  transcribing,
   onToggleMic,
   voiceSupported,
   placeholder,
-  listeningLabel,
 }: ChatInputProps) {
-  const micDisabled = voiceSupported === false;
+  const micDisabled =
+    voiceSupported === false || transcribing || (loading && !recording);
   return (
     <div className="w-full max-w-2xl mx-auto bg-white/60 backdrop-blur-lg border border-white/50 rounded-2xl p-2 flex items-center shadow-xl">
       <button
         type="button"
         onClick={onToggleMic}
-        disabled={micDisabled || loading}
+        disabled={micDisabled}
         title={
-          micDisabled
+          voiceSupported === false
             ? "Voice not supported"
-            : listening
-            ? "Stop listening"
+            : transcribing
+            ? "Transcribing"
+            : recording
+            ? "Stop recording"
             : "Start voice input"
         }
-        aria-label={listening ? "Stop voice input" : "Start voice input"}
+        aria-label={recording ? "Stop voice input" : "Start voice input"}
         className={`mx-1 w-10 h-10 rounded-full flex items-center justify-center transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-          listening
+          recording
             ? "bg-red-500/90 text-white animate-pulse"
+            : transcribing
+            ? "bg-white/60 text-[#1d2846]"
             : "text-[#1d2846]/70 hover:bg-white/50"
         }`}
       >
-        {micDisabled ? (
+        {transcribing ? (
+          <Loader2 className="w-5 h-5 animate-spin" />
+        ) : voiceSupported === false ? (
           <MicOff className="w-5 h-5" />
         ) : (
           <Mic className="w-5 h-5" />
@@ -456,13 +540,13 @@ function ChatInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={onKeyDown}
-        disabled={loading}
-        placeholder={listening ? listeningLabel : placeholder}
+        disabled={loading || recording || transcribing}
+        placeholder={placeholder}
         className="flex-1 bg-transparent outline-none py-4 text-[#1d2846] font-semibold placeholder:text-[#1d2846]/60 disabled:opacity-60"
       />
       <button
         onClick={onSend}
-        disabled={loading || !value.trim()}
+        disabled={loading || recording || transcribing || !value.trim()}
         aria-label="Send message"
         className="w-12 h-12 rounded-xl bg-[#1d2846] text-white flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
       >

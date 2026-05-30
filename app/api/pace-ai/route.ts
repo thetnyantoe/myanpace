@@ -1,4 +1,8 @@
-import { Groq } from "groq-sdk";
+// Switched off Groq for the demo — its free-tier TPM bucket runs out after a
+// handful of tool-using turns. The SDK is kept installed in case we want to
+// dual-route later, but the client below is commented out.
+// import { Groq } from "groq-sdk";
+import OpenAI from "openai";
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/utils/supabase/server";
@@ -9,7 +13,20 @@ import {
 } from "@/backend/queue";
 import { ACTIVE_QUEUE_STATUSES } from "@/lib/queue/types";
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+// gpt-4o-mini's tool calling is more reliable than llama-3.3 and its Burmese
+// is noticeably more natural. Costs ~$0.0006 per turn at our prompt sizes,
+// which is irrelevant for demo traffic.
+const CHAT_MODEL = "gpt-4o-mini";
+
+// IMPORTANT: instantiate inside the handler, not at module top level. The
+// OpenAI SDK throws synchronously when `apiKey` is undefined, and Next.js
+// imports route files during build (Vercel's "Collecting page data" phase) —
+// a missing env var would crash the build, not just the request.
+function getOpenAI(): OpenAI | null {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key || !key.trim()) return null;
+  return new OpenAI({ apiKey: key });
+}
 
 type ChatMessage = {
   role: "user" | "assistant" | "system" | "tool";
@@ -424,6 +441,16 @@ async function executeTool(
 }
 
 export async function POST(req: NextRequest) {
+  // 0. Bail early if OpenAI isn't configured. We do this before any DB work so
+  //    a misconfigured deployment is cheap and obvious.
+  const openai = getOpenAI();
+  if (!openai) {
+    return NextResponse.json(
+      { error: "PaceAI is not configured (missing OPENAI_API_KEY)." },
+      { status: 503 },
+    );
+  }
+
   // 1. Auth detection. Anonymous and authed visitors both allowed; tool surface
   //    and rate-limit budget differ.
   const supabase = createClient(await cookies());
@@ -497,13 +524,13 @@ export async function POST(req: NextRequest) {
       .map((m) => ({ role: m.role, content: m.content }) as ChatMessage),
   ];
 
-  // 3. Tool-calling loop, non-streaming. Groq's streaming API delivers tool
-  //    calls in chunks which makes mid-stream dispatch brittle — resolve all
-  //    tool rounds first, then stream the final assistant turn.
+  // 3. Tool-calling loop, non-streaming. OpenAI streaming delivers tool calls
+  //    in chunks which makes mid-stream dispatch brittle — resolve all tool
+  //    rounds first, then stream the final assistant turn.
   try {
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-      const completion = await groq.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
+      const completion = await openai.chat.completions.create({
+        model: CHAT_MODEL,
         messages: working as any,
         tools: tools as any,
         tool_choice: "auto",
@@ -557,8 +584,8 @@ export async function POST(req: NextRequest) {
 
   // 4. Stream the final assistant turn. tool_choice "none" so the model
   //    commits to text and doesn't open another tool round we won't handle.
-  const stream = await groq.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
+  const stream = await openai.chat.completions.create({
+    model: CHAT_MODEL,
     messages: working as any,
     tools: tools as any,
     tool_choice: "none",
