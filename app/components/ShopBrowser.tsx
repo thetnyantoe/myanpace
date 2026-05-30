@@ -7,6 +7,7 @@ import {
   cancelQueueTicket,
   createQueueTicket,
   fetchAllTickets,
+  fetchMyActiveTicketIds,
 } from "@/backend/queue";
 import { WAIT_MINUTES_PER_GROUP, TOTAL_WINDOW_MS } from "@/lib/queue/constants";
 import { sendPush, setupTicketPush } from "@/lib/queue/push";
@@ -142,6 +143,44 @@ export default function ShopBrowser({
         setDismissedTokenIds(JSON.parse(storedDismissed));
       } catch (e) {}
     }
+  }, [userId]);
+
+  // Sync myTokenIds from the database. localStorage is only populated when the
+  // user taps "Get Token" in this browser tab — tickets created out-of-band
+  // (e.g. by the PaceAI assistant calling join_queue) would otherwise be
+  // invisible. We merge rather than replace so a freshly-created ticket the
+  // local code already knows about doesn't flicker off while the round-trip
+  // is in flight.
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+
+    const syncFromDb = async () => {
+      const result = await fetchMyActiveTicketIds();
+      if (cancelled || !result.ok) return;
+      const dbIds = result.data;
+      setMyTokenIds((prev) => {
+        const merged = Array.from(new Set([...prev, ...dbIds]));
+        // Only update if something actually changed — avoids an extra render.
+        if (
+          merged.length === prev.length &&
+          merged.every((id) => prev.includes(id))
+        ) {
+          return prev;
+        }
+        try {
+          localStorage.setItem("qm_my_tokens", JSON.stringify(merged));
+        } catch {}
+        return merged;
+      });
+    };
+
+    syncFromDb();
+    const poll = setInterval(syncFromDb, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(poll);
+    };
   }, [userId]);
 
   useEffect(() => {

@@ -56,6 +56,38 @@ async function requireManagerShop(shopId?: string) {
 }
 
 /**
+ * Returns ticket IDs that belong to the currently signed-in customer and are
+ * still active in some shop's queue. The customer-side UI uses this to keep
+ * the "my tokens" list in sync with the DB — important when tickets are
+ * created out-of-band (e.g. by the PaceAI assistant) and never touched
+ * localStorage on this device.
+ */
+export async function fetchMyActiveTicketIds(): Promise<
+  QueueActionResult<string[]>
+> {
+  const auth = await requireCustomer();
+  if (!auth.ok) return auth;
+
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("Ticket")
+      .select("id")
+      .eq("customerId", auth.userId)
+      .in("status", ACTIVE_QUEUE_STATUSES);
+
+    if (error) return { ok: false, error: error.message };
+    return { ok: true, data: (data ?? []).map((t: any) => t.id) };
+  } catch (e) {
+    return {
+      ok: false,
+      error:
+        e instanceof Error ? e.message : "Failed to load your active tickets.",
+    };
+  }
+}
+
+/**
  * Public, read-only feed used by the customer ShopBrowser to compute "X ahead
  * of you" counts. Intentionally strips `subscription` and `customerId` so the
  * endpoint cannot be used to harvest push endpoints or link tickets to users.
