@@ -117,21 +117,27 @@ export default function ShopBrowser({
   }, []);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const storedTokens = localStorage.getItem("qm_my_tokens");
-      const storedDismissed = localStorage.getItem("qm_dismissed_tokens");
-      if (storedTokens) {
-        try {
-          setMyTokenIds(JSON.parse(storedTokens));
-        } catch (e) {}
-      }
-      if (storedDismissed) {
-        try {
-          setDismissedTokenIds(JSON.parse(storedDismissed));
-        } catch (e) {}
-      }
+    if (typeof window === "undefined") return;
+    if (!userId) {
+      localStorage.removeItem("qm_my_tokens");
+      localStorage.removeItem("qm_dismissed_tokens");
+      setMyTokenIds([]);
+      setDismissedTokenIds([]);
+      return;
     }
-  }, []);
+    const storedTokens = localStorage.getItem("qm_my_tokens");
+    const storedDismissed = localStorage.getItem("qm_dismissed_tokens");
+    if (storedTokens) {
+      try {
+        setMyTokenIds(JSON.parse(storedTokens));
+      } catch (e) {}
+    }
+    if (storedDismissed) {
+      try {
+        setDismissedTokenIds(JSON.parse(storedDismissed));
+      } catch (e) {}
+    }
+  }, [userId]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !("serviceWorker" in navigator))

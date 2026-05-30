@@ -33,14 +33,27 @@ interface ManagerPageProps {
   shopId?: string;
 }
 
-const FILTER_TABS: { key: StaffFilter; label: string }[] = [
-  { key: "all", label: "All" },
+type DashboardFilter = StaffFilter | "active";
+
+const FILTER_TABS: { key: DashboardFilter; label: string }[] = [
+  { key: "active", label: "Active" },
   { key: "PENDING", label: "Waiting" },
   { key: "NOTIFIED", label: "Called" },
   { key: "SERVING", label: "Serving" },
   { key: "COMPLETED", label: "Completed" },
   { key: "NOSHOW", label: "No Show" },
+  { key: "all", label: "All" },
 ];
+
+function isToday(iso: string): boolean {
+  const d = new Date(iso);
+  const now = new Date();
+  return (
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  );
+}
 
 function ShopAvatar({ shop, size = "md" }: { shop: Shop; size?: "sm" | "md" }) {
   const dim = size === "md" ? "w-10 h-10" : "w-8 h-8";
@@ -72,7 +85,7 @@ export default function ManagerClient({ shopId: propShopId }: ManagerPageProps) 
   const [shopError, setShopError] = useState<string | null>(null);
 
   const [tokens, setTokens] = useState<QueueTicket[]>([]);
-  const [staffFilter, setStaffFilter] = useState<StaffFilter>("all");
+  const [staffFilter, setStaffFilter] = useState<DashboardFilter>("active");
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [toast, setToast] = useState({ message: "", visible: false, type: "info" as "success" | "error" | "info" });
   const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -308,11 +321,33 @@ export default function ManagerClient({ shopId: propShopId }: ManagerPageProps) 
     }, 100);
   }, [tokens, showToast, updateStatus, closeScanner]);
 
-  const waitingCount = useMemo(
-    () =>
-      tokens.filter((t) => ACTIVE_QUEUE_STATUSES.includes(t.status)).length,
-    [tokens],
-  );
+  const counts = useMemo(() => {
+    const c = {
+      PENDING: 0,
+      NOTIFIED: 0,
+      SERVING: 0,
+      COMPLETED: 0,
+      NOSHOW: 0,
+      active: 0,
+      all: tokens.length,
+      servedToday: 0,
+      noshowToday: 0,
+    };
+    for (const t of tokens) {
+      c[t.status]++;
+      if (ACTIVE_QUEUE_STATUSES.includes(t.status)) c.active++;
+      if (t.status === "COMPLETED" && t.servedAt && isToday(t.servedAt))
+        c.servedToday++;
+      if (t.status === "NOSHOW" && isToday(t.createdAt)) c.noshowToday++;
+    }
+    return c;
+  }, [tokens]);
+
+  const completionRate = useMemo(() => {
+    const total = counts.servedToday + counts.noshowToday;
+    if (total === 0) return null;
+    return Math.round((counts.servedToday / total) * 100);
+  }, [counts.servedToday, counts.noshowToday]);
 
   const filteredTokens = useMemo(() => {
     const sorted = [...tokens].sort(
@@ -320,8 +355,13 @@ export default function ManagerClient({ shopId: propShopId }: ManagerPageProps) 
         new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
     );
     if (staffFilter === "all") return sorted;
+    if (staffFilter === "active")
+      return sorted.filter((t) => ACTIVE_QUEUE_STATUSES.includes(t.status));
     return sorted.filter((t) => t.status === staffFilter);
   }, [tokens, staffFilter]);
+
+  const showCompactCards =
+    staffFilter === "COMPLETED" || staffFilter === "NOSHOW";
 
   const handleSignOut = useCallback(() => {
     showToast("Logged out successfully", "info");
@@ -363,95 +403,172 @@ export default function ManagerClient({ shopId: propShopId }: ManagerPageProps) 
         .ring-pulse { animation: pulse-ring 2s infinite; }
       `}</style>
 
-      <section className="min-h-screen bg-slate-100 flex flex-col p-5 gap-5">
+      <section className="min-h-screen bg-slate-50 flex flex-col p-5 gap-4">
         <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                {shopLoading ? (
-                  <div className="h-5 w-32 bg-slate-200 rounded animate-pulse" />
-                ) : shop ? (
-                  <>
-                    <ShopAvatar shop={shop} />
-                    <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wider">
-                      {shop.name} Dashboard
-                    </span>
-                  </>
-                ) : null}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              {shopLoading ? (
+                <div className="h-12 w-12 bg-slate-200 rounded-full animate-pulse" />
+              ) : shop ? (
+                <ShopAvatar shop={shop} />
+              ) : null}
+              <div>
+                <h2 className="text-xl font-black text-slate-900 leading-tight">
+                  {shop?.name ?? "Queue Dashboard"}
+                </h2>
+                <p className="text-slate-500 text-xs mt-0.5">
+                  {shop?.location || "Manage today's queue and customer flow"}
+                </p>
               </div>
-              <h2 className="text-2xl font-black text-slate-800">
-                Queue Dashboard
-              </h2>
-              <p className="text-slate-500 text-sm mt-0.5">
-                Manage and process customer tokens
-              </p>
             </div>
 
-            <div className="flex items-center gap-3">
-              <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 flex items-center gap-3">
-                <div className="bg-amber-100 text-amber-600 p-2 rounded-lg text-lg">
-                  👥
-                </div>
-                <div>
-                  <p className="text-xs text-slate-400 font-semibold uppercase tracking-wide leading-none">
-                    Waiting
-                  </p>
-                  <p className="text-2xl font-black text-slate-800 leading-none mt-0.5">
-                    {waitingCount}
-                  </p>
-                </div>
-              </div>
+            <div className="flex items-center gap-2">
               <button
                 onClick={openScanner}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-3 rounded-xl font-bold transition flex items-center gap-2 shadow-sm"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-bold transition flex items-center gap-2 shadow-sm text-sm"
               >
                 📷 Scan QR
               </button>
               <button
                 onClick={handleSignOut}
-                className="bg-red-50 hover:bg-red-100 text-red-600 px-4 py-3 rounded-xl font-bold transition text-sm"
+                className="bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-600 px-3 py-2.5 rounded-xl font-semibold transition text-sm"
               >
                 Logout
               </button>
             </div>
           </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-5">
+            <StatCard
+              label="Waiting"
+              value={counts.PENDING}
+              accent="amber"
+              hint="In queue"
+            />
+            <StatCard
+              label="Called"
+              value={counts.NOTIFIED}
+              accent="blue"
+              hint="Heading in"
+              pulse={counts.NOTIFIED > 0}
+            />
+            <StatCard
+              label="Serving"
+              value={counts.SERVING}
+              accent="indigo"
+              hint="At counter"
+            />
+            <StatCard
+              label="Served Today"
+              value={counts.servedToday}
+              accent="emerald"
+              hint={
+                completionRate !== null
+                  ? `${completionRate}% completion`
+                  : "No data yet"
+              }
+            />
+            <StatCard
+              label="No-shows Today"
+              value={counts.noshowToday}
+              accent="rose"
+              hint={
+                counts.noshowToday > 0 ? "Review timing" : "Clean record"
+              }
+            />
+          </div>
         </div>
 
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
           {FILTER_TABS.map(({ key, label }) => {
             const active = staffFilter === key;
+            const count =
+              key === "all"
+                ? counts.all
+                : key === "active"
+                  ? counts.active
+                  : counts[key as TicketStatus];
             return (
               <button
                 key={key}
                 onClick={() => setStaffFilter(key)}
-                className={`shrink-0 px-4 py-2 rounded-xl font-bold text-sm border-2 transition-all ${
+                className={`shrink-0 px-3.5 py-2 rounded-xl font-bold text-sm border transition-all flex items-center gap-2 ${
                   active
-                    ? "bg-indigo-600 border-indigo-600 text-white shadow-sm"
+                    ? "bg-slate-900 border-slate-900 text-white shadow-sm"
                     : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
                 }`}
               >
-                {label}
+                <span>{label}</span>
+                <span
+                  className={`text-[11px] font-bold px-1.5 py-0.5 rounded-md min-w-[20px] text-center ${
+                    active
+                      ? "bg-white/20 text-white"
+                      : "bg-slate-100 text-slate-500"
+                  }`}
+                >
+                  {count}
+                </span>
               </button>
             );
           })}
         </div>
 
         {filteredTokens.length === 0 ? (
-          <div className="col-span-full flex flex-col items-center py-20 text-slate-400 bg-white rounded-2xl border-2 border-dashed border-slate-200">
+          <div className="flex flex-col items-center py-20 text-slate-400 bg-white rounded-2xl border-2 border-dashed border-slate-200">
             <p className="text-5xl mb-3">☕</p>
-            <p className="font-bold text-slate-500">No tokens here</p>
-            <p className="text-sm">Queue is clear!</p>
+            <p className="font-bold text-slate-600">
+              {staffFilter === "active"
+                ? "No active tickets"
+                : staffFilter === "all"
+                  ? "No tickets yet"
+                  : `No ${STATUS_LABELS[staffFilter as TicketStatus]?.toLowerCase() ?? ""} tickets`}
+            </p>
+            <p className="text-sm mt-0.5">
+              {staffFilter === "active"
+                ? "Queue is clear — ready for the next customer."
+                : "Check back as new tickets come in."}
+            </p>
+          </div>
+        ) : showCompactCards ? (
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+            {filteredTokens.map((token, i) => (
+              <CompactTokenRow
+                key={token.id}
+                token={token}
+                isLast={i === filteredTokens.length - 1}
+              />
+            ))}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {filteredTokens.map((token) => (
-              <StaffTokenCard
-                key={token.id}
-                token={token}
-                currentTime={currentTime}
-                onUpdateStatus={updateStatus}
-              />
-            ))}
+            {filteredTokens
+              .filter((t) => ACTIVE_QUEUE_STATUSES.includes(t.status))
+              .map((token) => (
+                <StaffTokenCard
+                  key={token.id}
+                  token={token}
+                  currentTime={currentTime}
+                  onUpdateStatus={updateStatus}
+                />
+              ))}
+            {filteredTokens.some((t) => isTerminalStatus(t.status)) && (
+              <div className="col-span-full mt-2">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">
+                  Closed
+                </p>
+                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                  {filteredTokens
+                    .filter((t) => isTerminalStatus(t.status))
+                    .map((token, i, arr) => (
+                      <CompactTokenRow
+                        key={token.id}
+                        token={token}
+                        isLast={i === arr.length - 1}
+                      />
+                    ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </section>
