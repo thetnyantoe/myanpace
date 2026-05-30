@@ -391,16 +391,17 @@ export default function NavBar({ initialUser }: NavBarProps) {
               </div>
 
               {user ? (
-                <form action={logout}>
+                <form
+                  action={async () => {
+                    try {
+                      localStorage.removeItem("qm_my_tokens");
+                      localStorage.removeItem("qm_dismissed_tokens");
+                    } catch {}
+                    await logout();
+                  }}
+                >
                   <button
                     type="submit"
-                    onClick={() => {
-                      try {
-                        localStorage.removeItem("qm_my_tokens");
-                        localStorage.removeItem("qm_dismissed_tokens");
-                      } catch {}
-                      setAccountOpen(false);
-                    }}
                     className="w-full py-4 rounded-2xl bg-white border border-[#d6d6d5] text-red-600 font-medium hover:bg-red-50 transition-colors shadow-sm"
                   >
                     Log Out
