@@ -75,11 +75,17 @@ const UI = {
   },
 };
 
-declare global {
-  interface Window {
-    SpeechRecognition: new () => SpeechRecognition;
-    webkitSpeechRecognition: new () => SpeechRecognition;
-  }
+// TS 5.x's DOM lib ships a built-in `Window.SpeechRecognition`, so augmenting
+// the global here collides with it. Resolve the constructor via an unknown
+// cast instead — keeps the local SpeechRecognition interface unambiguous.
+type SpeechRecognitionCtor = new () => SpeechRecognition;
+function getSpeechRecognitionCtor(): SpeechRecognitionCtor | null {
+  if (typeof window === "undefined") return null;
+  const w = window as unknown as {
+    SpeechRecognition?: SpeechRecognitionCtor;
+    webkitSpeechRecognition?: SpeechRecognitionCtor;
+  };
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
 export default function ChatClient() {
@@ -140,7 +146,7 @@ export default function ChatClient() {
   };
 
   const startListening = useCallback(() => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const SR = getSpeechRecognitionCtor();
     if (!SR) return;
     const rec = new SR();
     rec.lang = lang === "my" ? "my-MM" : "en-US";

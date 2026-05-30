@@ -1,6 +1,12 @@
 import { Groq } from "groq-sdk";
+import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
+import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
+import {
+  createQueueTicket,
+  cancelQueueTicket,
+} from "@/backend/queue";
 import { ACTIVE_QUEUE_STATUSES } from "@/lib/queue/types";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
@@ -16,39 +22,99 @@ type ChatMessage = {
   }>;
 };
 
-const SYSTEM_PROMPT = {
+const SYSTEM_PROMPT_AUTHED = {
   en: `You are PacePace, the friendly AI concierge for Myanpace — a modern queue management platform for restaurants and shops.
-You help visitors discover shops, check how busy a queue is right now, and understand how the platform works.
-You have READ-ONLY access to live shop and queue data via tools. ALWAYS call a tool when the user asks about specific shops, categories, or current busyness — never invent shop names, numbers, or wait estimates.
-You CANNOT join a queue, cancel a ticket, or make a reservation on the user's behalf. If asked, politely point them to do it inside the Myanpace app.
-Reservations are not yet supported on Myanpace — only walk-in queue tickets. Be honest about this if asked.
-Be warm, concise, and helpful. Use markdown sparingly — bold key points and use short lists when useful.
-Respond in English. Keep answers under 120 words unless the user clearly needs more detail.`,
+The user is signed in as a customer, so you can help them discover shops, check live queue busyness, AND take a queue token on their behalf.
 
-  my: `သင်သည် Myanpace ၏ AI Concierge ဖြစ်သော PacePace ဖြစ်ပါသည်။ Myanpace သည် စားသောက်ဆိုင်နှင့် ဆိုင်များအတွက် ခေတ်မီသော တန်းစီစီမံခန့်ခွဲမှု ပလပ်ဖောင်းတစ်ခု ဖြစ်သည်။
-ဆိုင်များကို ရှာဖွေဖို့၊ လက်ရှိတန်းစီ ဘယ်လောက်ရှည်နေသလဲ စစ်ဆေးဖို့၊ ပလပ်ဖောင်း အလုပ်လုပ်ပုံကို နားလည်ဖို့ ကူညီပါ။
-သင်သည် tools မှတဆင့် live ဆိုင်နှင့် တန်းစီအချက်အလက်များကို read-only ဖြင့်သာ အသုံးပြုနိုင်သည်။ ဆိုင်အကြောင်း တိကျမေးခွန်း မေးလာပါက tools ကို အမြဲသုံးပါ — အချက်အလက်များကို ကိုယ်တိုင် မဖန်တီးပါနှင့်။
-သင်သည် တန်းစီဝင်ခြင်း၊ ticket ဖျက်ခြင်း၊ reservation လုပ်ခြင်းများ ပြုလုပ်ပေး၍မရပါ။ မေးလာပါက app ထဲတွင် ပြုလုပ်ရန် ယဉ်ကျေးစွာ ညွှန်ပြပါ။
-Myanpace တွင် ယခုထိ reservation စနစ်မရှိသေးပါ — walk-in တန်းစီ ticket များသာ ရှိသည်။ မေးခွန်းရှိပါက ပွင့်လင်းစွာ ပြောပါ။
-ဖော်ရွေစွာ၊ တိုတောင်းရှင်းလင်းစွာ ဖြေပါ။ မြန်မာဘာသာဖြင့် ဖြေပါ။ ၁၂၀ စကားလုံးအောက် တိုတောင်းအောင် ဖြေပါ (ပိုရှည်ရန် လိုအပ်မှသာ ရှည်ပါ)။`,
+You have these tools:
+- list_shops: search shops by name / category / location.
+- get_shop_busyness: live active-ticket count for a specific shop.
+- list_categories: all available cuisine categories.
+- check_my_tickets: list this customer's currently active tickets.
+- join_queue: take a queue token at a shop for N people. REQUIRES confirmation.
+- cancel_my_ticket: cancel one of this customer's tickets. REQUIRES confirmation.
+
+CRITICAL RULES:
+1. NEVER invent shop names, busyness numbers, ticket numbers, or wait estimates — always call a tool.
+2. Before calling join_queue, you MUST confirm BOTH the exact shop AND the party size with the user in chat. Example: "Just to confirm — take a token at Shwe Mandalay for 2 people?". Only call join_queue after the user says yes/confirms.
+3. Before calling cancel_my_ticket, confirm WHICH ticket the user wants to cancel.
+4. If the user names a shop loosely (e.g. "the burmese place"), call list_shops first to disambiguate, then confirm with the user.
+5. Reservations do not exist yet — only walk-in queue tokens. Be honest if asked.
+6. After joining a queue, tell the user the ticket number and their queue position from the tool result.
+
+Be warm, concise, helpful. Use markdown sparingly. English. Under 120 words unless detail is requested.`,
+
+  my: `သင်သည် Myanpace ၏ AI Concierge ဖြစ်သော PacePace ဖြစ်ပါသည်။ Myanpace သည် စားသောက်ဆိုင်နှင့် ဆိုင်များအတွက် ခေတ်မီသော တန်းစီစီမံခန့်ခွဲမှု ပလပ်ဖောင်းဖြစ်သည်။
+သုံးစွဲသူသည် customer အဖြစ် sign in ဝင်ထားသူဖြစ်သည်။ ဆိုင်ရှာဖွေပေးခြင်း၊ live queue ၏ အလုပ်များမှု စစ်ပေးခြင်းအပြင် သူ့ကိုယ်စား queue token ယူပေးနိုင်ပါသည်။
+
+ရရှိနိုင်သော tools များ:
+- list_shops: နာမည်/category/location ဖြင့် ဆိုင်ရှာသည်။
+- get_shop_busyness: ဆိုင်တစ်ခု၏ လက်ရှိ active ticket အရေအတွက်။
+- list_categories: ရရှိနိုင်သော cuisine category များ။
+- check_my_tickets: သုံးစွဲသူ၏ လက်ရှိ active tickets စာရင်း။
+- join_queue: ဆိုင်တစ်ခုတွင် N ယောက်အတွက် queue token ယူသည်။ ဥပစာအတည်ပြုခြင်း လိုသည်။
+- cancel_my_ticket: ticket တစ်ခု ဖျက်သိမ်းသည်။ ဥပစာအတည်ပြုခြင်း လိုသည်။
+
+အရေးကြီးသော စည်းမျဉ်းများ:
+1. ဆိုင်နာမည်၊ အလုပ်များမှု၊ ticket နံပါတ်များကို ကိုယ်တိုင် မဖန်တီးပါနှင့် — အမြဲ tool ခေါ်ပါ။
+2. join_queue မခေါ်မီ ဆိုင်နှင့် လူဦးရေကို သုံးစွဲသူနှင့် chat ထဲတွင် အတည်ပြုပါ။ ဥပမာ: "Shwe Mandalay တွင် ၂ ယောက်အတွက် token ယူလိုက်ပါမည်နော်?"။ သုံးစွဲသူက သဘောတူပြီးမှ join_queue ခေါ်ပါ။
+3. cancel_my_ticket မခေါ်မီ မည်သည့် ticket ကို ဖျက်မည်ဆိုသည် အတည်ပြုပါ။
+4. ဆိုင်နာမည်ကို ဝါးဝါးပြောလျှင် list_shops ဖြင့် ရှာဖွေပြီး အတည်ပြုပါ။
+5. Myanpace တွင် reservation စနစ်မရှိသေးပါ — walk-in queue token များသာရှိသည်။
+6. queue ဝင်ပြီးပါက ticket နံပါတ်နှင့် queue position ကို သုံးစွဲသူအား ပြောပြပါ။
+
+ဖော်ရွေစွာ၊ တိုတောင်းရှင်းလင်းစွာ မြန်မာဘာသာဖြင့် ဖြေပါ။ ၁၂၀ စကားလုံးအောက် တိုတောင်းအောင် ဖြေပါ။`,
 };
 
-const RATE_LIMIT_MAX = 15;
+const SYSTEM_PROMPT_ANON = {
+  en: `You are PacePace, the friendly AI concierge for Myanpace — a modern queue management platform for restaurants and shops.
+The user is NOT signed in, so you can only help them DISCOVER shops and check busyness. You CANNOT take a token or cancel one on their behalf — those require signing in.
+
+Tools available:
+- list_shops: search shops by name / category / location.
+- get_shop_busyness: live active-ticket count for a specific shop.
+- list_categories: all cuisine categories.
+
+CRITICAL RULES:
+1. NEVER invent shop names, busyness numbers, or wait estimates — always call a tool.
+2. If the user asks you to join a queue / take a token / cancel a ticket, politely tell them they need to sign in first, then they can ask you again.
+3. Reservations do not exist yet — only walk-in queue tokens.
+
+Be warm, concise, helpful. Use markdown sparingly. English. Under 120 words.`,
+
+  my: `သင်သည် Myanpace ၏ AI Concierge ဖြစ်သော PacePace ဖြစ်ပါသည်။
+သုံးစွဲသူသည် sign in ဝင်မထားသေးပါ။ ထို့ကြောင့် ဆိုင်များ ရှာဖွေပေးခြင်းနှင့် busyness စစ်ပေးခြင်းသာ ပြုလုပ်နိုင်ပါသည်။ token ယူခြင်း သို့မဟုတ် ticket ဖျက်ခြင်းတို့ကို သုံးစွဲသူ ကိုယ်တိုင် sign in ဝင်ပြီးမှ ပြုလုပ်ရပါမည်။
+
+ရရှိနိုင်သော tools များ:
+- list_shops: နာမည်/category/location ဖြင့် ဆိုင်ရှာသည်။
+- get_shop_busyness: ဆိုင်တစ်ခု၏ လက်ရှိ active ticket အရေအတွက်။
+- list_categories: cuisine category များ။
+
+အရေးကြီးသော စည်းမျဉ်းများ:
+1. ဆိုင်နာမည်၊ နံပါတ်များကို ကိုယ်တိုင် မဖန်တီးပါနှင့် — အမြဲ tool ခေါ်ပါ။
+2. သုံးစွဲသူက queue ဝင်ပေးပါ၊ token ယူပေးပါ၊ ticket ဖျက်ပေးပါဟု ပြောလျှင် sign in ဝင်ရန် ယဉ်ကျေးစွာ ပြောပါ။
+3. Myanpace တွင် reservation စနစ်မရှိသေးပါ။
+
+ဖော်ရွေစွာ၊ မြန်မာဘာသာဖြင့်၊ ၁၂၀ စကားလုံးအောက် ဖြေပါ။`,
+};
+
+const RATE_LIMIT_MAX_AUTHED = 30;
+const RATE_LIMIT_MAX_ANON = 15;
 const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
 const MAX_MESSAGES = 20;
 const MAX_CONTENT_BYTES = 4 * 1024;
-const MAX_TOOL_ROUNDS = 3;
+const MAX_TOOL_ROUNDS = 4;
 
 const rateBuckets = new Map<string, { count: number; windowStart: number }>();
 
-function takeRateToken(key: string): boolean {
+function takeRateToken(key: string, max: number): boolean {
   const now = Date.now();
   const bucket = rateBuckets.get(key);
   if (!bucket || now - bucket.windowStart > RATE_LIMIT_WINDOW_MS) {
     rateBuckets.set(key, { count: 1, windowStart: now });
     return true;
   }
-  if (bucket.count >= RATE_LIMIT_MAX) return false;
+  if (bucket.count >= max) return false;
   bucket.count++;
   return true;
 }
@@ -71,7 +137,7 @@ function isValidIncomingMessage(value: unknown): value is {
   return true;
 }
 
-const tools = [
+const READ_TOOLS = [
   {
     type: "function" as const,
     function: {
@@ -81,19 +147,12 @@ const tools = [
       parameters: {
         type: "object",
         properties: {
-          name: {
-            type: "string",
-            description: "Partial shop name to match (case-insensitive).",
-          },
+          name: { type: "string", description: "Partial shop name." },
           category: {
             type: "string",
-            description:
-              "Category / cuisine name to filter by (e.g. 'Burmese', 'Coffee').",
+            description: "Category / cuisine (e.g. 'Burmese', 'Coffee').",
           },
-          location: {
-            type: "string",
-            description: "Location keyword (e.g. 'Yangon', 'downtown').",
-          },
+          location: { type: "string", description: "Location keyword." },
         },
       },
     },
@@ -103,14 +162,11 @@ const tools = [
     function: {
       name: "get_shop_busyness",
       description:
-        "Look up how busy a specific shop's queue is right now. Returns active ticket count and how many tickets have been issued total.",
+        "Look up how busy a specific shop's queue is right now. Returns active ticket count and total tickets issued.",
       parameters: {
         type: "object",
         properties: {
-          shop_name: {
-            type: "string",
-            description: "Exact or partial shop name.",
-          },
+          shop_name: { type: "string", description: "Exact or partial shop name." },
         },
         required: ["shop_name"],
       },
@@ -120,9 +176,60 @@ const tools = [
     type: "function" as const,
     function: {
       name: "list_categories",
-      description:
-        "List all shop categories (cuisine types) currently available on Myanpace.",
+      description: "List all shop categories (cuisine types) on Myanpace.",
       parameters: { type: "object", properties: {} },
+    },
+  },
+];
+
+const CUSTOMER_TOOLS = [
+  {
+    type: "function" as const,
+    function: {
+      name: "check_my_tickets",
+      description:
+        "List the signed-in customer's currently active queue tickets (PENDING / NOTIFIED / SERVING).",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "join_queue",
+      description:
+        "Take a queue token at a shop on the user's behalf. ONLY call this after the user has explicitly confirmed both the shop and the party size in chat.",
+      parameters: {
+        type: "object",
+        properties: {
+          shop_name: {
+            type: "string",
+            description: "Exact or near-exact shop name to join.",
+          },
+          person_count: {
+            type: "integer",
+            description: "Number of people in the party (1-10).",
+          },
+        },
+        required: ["shop_name", "person_count"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "cancel_my_ticket",
+      description:
+        "Cancel one of the signed-in customer's queue tickets. ONLY call after the user has confirmed which ticket to cancel.",
+      parameters: {
+        type: "object",
+        properties: {
+          ticket_id: {
+            type: "string",
+            description: "The id of the ticket to cancel (from check_my_tickets).",
+          },
+        },
+        required: ["ticket_id"],
+      },
     },
   },
 ];
@@ -135,6 +242,7 @@ function pickFirst<T>(maybe: T | T[] | null | undefined): T | undefined {
 async function executeTool(
   name: string,
   rawArgs: string,
+  ctx: { userId: string | null },
 ): Promise<unknown> {
   let args: Record<string, unknown> = {};
   try {
@@ -212,22 +320,130 @@ async function executeTool(
   }
 
   if (name === "list_categories") {
-    const { data, error } = await admin
-      .from("Category")
-      .select("category_name");
+    const { data, error } = await admin.from("Category").select("category_name");
     if (error) return { error: error.message };
     return (data ?? [])
       .map((c: any) => c.category_name)
       .filter((n: unknown) => typeof n === "string" && n.length > 0);
   }
 
+  // ---- Customer-only mutations below ----
+
+  if (name === "check_my_tickets") {
+    if (!ctx.userId) {
+      return { error: "Sign in required to view your tickets." };
+    }
+    const { data, error } = await admin
+      .from("Ticket")
+      .select(
+        "id, shopId, ticketNo, status, personCount, createdAt, notifiedAt",
+      )
+      .eq("customerId", ctx.userId)
+      .in("status", ACTIVE_QUEUE_STATUSES)
+      .order("createdAt", { ascending: true });
+    if (error) return { error: error.message };
+
+    const tickets = data ?? [];
+    if (tickets.length === 0) {
+      return { tickets: [], note: "No active tickets." };
+    }
+
+    // Resolve shop names so the AI can talk about them naturally.
+    const shopIds = Array.from(new Set(tickets.map((t: any) => t.shopId)));
+    const { data: shops } = await admin
+      .from("Shop")
+      .select("id, name")
+      .in("id", shopIds);
+    const nameById = new Map(
+      (shops ?? []).map((s: any) => [s.id, s.name] as const),
+    );
+
+    return {
+      tickets: tickets.map((t: any) => ({
+        ticket_id: t.id,
+        shop: nameById.get(t.shopId) ?? "(unknown shop)",
+        ticket_no: t.ticketNo,
+        status: t.status,
+        person_count: t.personCount,
+      })),
+    };
+  }
+
+  if (name === "join_queue") {
+    if (!ctx.userId) {
+      return {
+        error: "Sign in required to join a queue. Please ask the user to sign in.",
+      };
+    }
+    if (typeof args.shop_name !== "string" || !args.shop_name.trim()) {
+      return { error: "shop_name is required." };
+    }
+    const personCount = Number(args.person_count);
+    if (!Number.isInteger(personCount) || personCount < 1 || personCount > 10) {
+      return { error: "person_count must be an integer between 1 and 10." };
+    }
+
+    const { data: shop, error: shopErr } = await admin
+      .from("Shop")
+      .select("id, name, is_available")
+      .ilike("name", `%${args.shop_name.trim()}%`)
+      .limit(1)
+      .maybeSingle();
+    if (shopErr) return { error: shopErr.message };
+    if (!shop) return { error: `No shop matching "${args.shop_name}".` };
+    if (shop.is_available === false) {
+      return { error: `${shop.name} is currently not accepting tickets.` };
+    }
+
+    const result = await createQueueTicket(shop.id, personCount);
+    if (!result.ok) return { error: result.error };
+
+    return {
+      ok: true,
+      shop: shop.name,
+      ticket_no: result.data.ticket?.ticketNo,
+      queue_position: result.data.queuePosition,
+      called_immediately: result.data.immediateCall,
+      status: result.data.ticket?.status,
+    };
+  }
+
+  if (name === "cancel_my_ticket") {
+    if (!ctx.userId) {
+      return { error: "Sign in required to cancel a ticket." };
+    }
+    if (typeof args.ticket_id !== "string" || !args.ticket_id.trim()) {
+      return { error: "ticket_id is required." };
+    }
+    const result = await cancelQueueTicket(args.ticket_id.trim());
+    if (!result.ok) return { error: result.error };
+    return { ok: true, status: result.data?.status };
+  }
+
   return { error: `Unknown tool: ${name}` };
 }
 
 export async function POST(req: NextRequest) {
-  // 1. Per-IP rate limit. Endpoint is anonymous-friendly, so the key is the
-  //    client IP, not user.id.
-  if (!takeRateToken(clientKey(req))) {
+  // 1. Auth detection. Anonymous and authed visitors both allowed; tool surface
+  //    and rate-limit budget differ.
+  const supabase = createClient(await cookies());
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  let isCustomer = false;
+  if (user) {
+    const { data: profile } = await supabase
+      .from("User")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+    isCustomer = profile?.role === "CUSTOMER";
+  }
+
+  const rateKey = user ? `u:${user.id}` : `ip:${clientKey(req)}`;
+  const rateMax = isCustomer ? RATE_LIMIT_MAX_AUTHED : RATE_LIMIT_MAX_ANON;
+  if (!takeRateToken(rateKey, rateMax)) {
     return NextResponse.json(
       { error: "Rate limit exceeded. Please try again in a few minutes." },
       { status: 429 },
@@ -267,17 +483,23 @@ export async function POST(req: NextRequest) {
   }
 
   const selectedLang: "en" | "my" = lang === "my" ? "my" : "en";
+  const systemPrompt = isCustomer
+    ? SYSTEM_PROMPT_AUTHED[selectedLang]
+    : SYSTEM_PROMPT_ANON[selectedLang];
+  const tools = isCustomer
+    ? [...READ_TOOLS, ...CUSTOMER_TOOLS]
+    : READ_TOOLS;
 
   const working: ChatMessage[] = [
-    { role: "system", content: SYSTEM_PROMPT[selectedLang] },
+    { role: "system", content: systemPrompt },
     ...(messages as Array<{ role: "user" | "assistant"; content: string }>)
       .slice(-10)
       .map((m) => ({ role: m.role, content: m.content }) as ChatMessage),
   ];
 
-  // 3. Tool-calling loop, non-streaming. Groq's streaming API delivers
-  //    tool_calls in chunks which makes mid-stream dispatch brittle — instead
-  //    we resolve all tool rounds first, then stream the final assistant turn.
+  // 3. Tool-calling loop, non-streaming. Groq's streaming API delivers tool
+  //    calls in chunks which makes mid-stream dispatch brittle — resolve all
+  //    tool rounds first, then stream the final assistant turn.
   try {
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
       const completion = await groq.chat.completions.create({
@@ -285,7 +507,7 @@ export async function POST(req: NextRequest) {
         messages: working as any,
         tools: tools as any,
         tool_choice: "auto",
-        temperature: 0.5,
+        temperature: 0.4,
         max_tokens: 600,
       });
 
@@ -293,11 +515,7 @@ export async function POST(req: NextRequest) {
       if (!choice) break;
 
       const toolCalls = choice.tool_calls ?? [];
-      if (toolCalls.length === 0) {
-        // Model is ready to answer — stream a fresh completion for the same
-        // state so the user sees the text appear progressively.
-        break;
-      }
+      if (toolCalls.length === 0) break;
 
       working.push({
         role: "assistant",
@@ -314,6 +532,7 @@ export async function POST(req: NextRequest) {
           const result = await executeTool(
             tc.function.name,
             tc.function.arguments ?? "{}",
+            { userId: isCustomer ? user!.id : null },
           );
           return {
             role: "tool" as const,
@@ -336,15 +555,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 4. Stream the final assistant turn. tool_choice forced to "none" so the
-  //    model commits to text instead of opening a new tool round we wouldn't
-  //    handle.
+  // 4. Stream the final assistant turn. tool_choice "none" so the model
+  //    commits to text and doesn't open another tool round we won't handle.
   const stream = await groq.chat.completions.create({
     model: "llama-3.3-70b-versatile",
     messages: working as any,
     tools: tools as any,
     tool_choice: "none",
-    temperature: 0.5,
+    temperature: 0.4,
     max_tokens: 600,
     stream: true,
   });
