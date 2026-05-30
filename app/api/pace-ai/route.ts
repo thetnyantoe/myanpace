@@ -13,13 +13,20 @@ import {
 } from "@/backend/queue";
 import { ACTIVE_QUEUE_STATUSES } from "@/lib/queue/types";
 
-// const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
 // gpt-4o-mini's tool calling is more reliable than llama-3.3 and its Burmese
 // is noticeably more natural. Costs ~$0.0006 per turn at our prompt sizes,
 // which is irrelevant for demo traffic.
 const CHAT_MODEL = "gpt-4o-mini";
+
+// IMPORTANT: instantiate inside the handler, not at module top level. The
+// OpenAI SDK throws synchronously when `apiKey` is undefined, and Next.js
+// imports route files during build (Vercel's "Collecting page data" phase) —
+// a missing env var would crash the build, not just the request.
+function getOpenAI(): OpenAI | null {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key || !key.trim()) return null;
+  return new OpenAI({ apiKey: key });
+}
 
 type ChatMessage = {
   role: "user" | "assistant" | "system" | "tool";
@@ -434,6 +441,16 @@ async function executeTool(
 }
 
 export async function POST(req: NextRequest) {
+  // 0. Bail early if OpenAI isn't configured. We do this before any DB work so
+  //    a misconfigured deployment is cheap and obvious.
+  const openai = getOpenAI();
+  if (!openai) {
+    return NextResponse.json(
+      { error: "PaceAI is not configured (missing OPENAI_API_KEY)." },
+      { status: 503 },
+    );
+  }
+
   // 1. Auth detection. Anonymous and authed visitors both allowed; tool surface
   //    and rate-limit budget differ.
   const supabase = createClient(await cookies());

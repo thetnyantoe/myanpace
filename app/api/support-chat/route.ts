@@ -6,9 +6,16 @@ import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
-// const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const CHAT_MODEL = "gpt-4o-mini";
+
+// IMPORTANT: instantiate inside the handler. The OpenAI SDK throws when
+// `apiKey` is undefined, and Next.js imports route files during build —
+// a missing env var would crash the Vercel build, not just the request.
+function getOpenAI(): OpenAI | null {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key || !key.trim()) return null;
+  return new OpenAI({ apiKey: key });
+}
 
 type ChatMessage = { role: "user" | "assistant" | "system"; content: string };
 
@@ -60,6 +67,15 @@ function isValidMessage(value: unknown): value is ChatMessage {
 }
 
 export async function POST(req: NextRequest) {
+  // 0. Bail early if OpenAI isn't configured.
+  const openai = getOpenAI();
+  if (!openai) {
+    return NextResponse.json(
+      { error: "Support chat is not configured (missing OPENAI_API_KEY)." },
+      { status: 503 },
+    );
+  }
+
   // 1. Require an authenticated user — this endpoint streams paid completions.
   const supabase = createClient(await cookies());
   const {
