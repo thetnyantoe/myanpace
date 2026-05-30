@@ -131,6 +131,13 @@ export default function NavBar({ initialUser }: NavBarProps) {
     }
   }, [mobileMenu, searchOpen, accountOpen, aiOpen, qrScanOpen]);
 
+  // Open the AI overlay when the wake-word listener fires.
+  useEffect(() => {
+    const open = () => setAiOpen(true);
+    window.addEventListener("pace:open-ai", open);
+    return () => window.removeEventListener("pace:open-ai", open);
+  }, []);
+
   if (!mounted) return null;
 
   // Manager dashboard owns its own header — hide the global navbar there.

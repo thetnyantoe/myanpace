@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import NavBar from "./components/navbar";
+import WakeWordListener from "./components/WakeWordListener";
 import { getProfile } from "@/backend/session";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -53,6 +54,7 @@ export default async function RootLayout({
       >
         <NavBar initialUser={profile} />
         {children}
+        <WakeWordListener />
         <ToastContainer />
       </body>
     </html>
