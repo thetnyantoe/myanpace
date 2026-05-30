@@ -986,9 +986,6 @@ export default function ShopBrowser({
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="bg-white border border-bgSurface text-xs sm:text-sm font-bold text-brandPrimary outline-none cursor-text px-4 py-2.5 rounded-xl shadow-sm flex-1 lg:flex-none"
                   />
-                  <button className="hidden lg:flex w-10 h-10 rounded-xl bg-brandPrimary text-bgMain items-center justify-center shadow-sm hover:bg-opacity-90 transition-all shrink-0">
-                    <QrIcon className="size-5 bg-white" />
-                  </button>
                 </div>
               </div>
             </div>

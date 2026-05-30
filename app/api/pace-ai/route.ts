@@ -1,8 +1,4 @@
-// Switched off Groq for the demo — its free-tier TPM bucket runs out after a
-// handful of tool-using turns. The SDK is kept installed in case we want to
-// dual-route later, but the client below is commented out.
-// import { Groq } from "groq-sdk";
-import OpenAI from "openai";
+import { Groq } from "groq-sdk";
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/utils/supabase/server";
@@ -13,20 +9,7 @@ import {
 } from "@/backend/queue";
 import { ACTIVE_QUEUE_STATUSES } from "@/lib/queue/types";
 
-// gpt-4o-mini's tool calling is more reliable than llama-3.3 and its Burmese
-// is noticeably more natural. Costs ~$0.0006 per turn at our prompt sizes,
-// which is irrelevant for demo traffic.
-const CHAT_MODEL = "gpt-4o-mini";
-
-// IMPORTANT: instantiate inside the handler, not at module top level. The
-// OpenAI SDK throws synchronously when `apiKey` is undefined, and Next.js
-// imports route files during build (Vercel's "Collecting page data" phase) —
-// a missing env var would crash the build, not just the request.
-function getOpenAI(): OpenAI | null {
-  const key = process.env.OPENAI_API_KEY;
-  if (!key || !key.trim()) return null;
-  return new OpenAI({ apiKey: key });
-}
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 type ChatMessage = {
   role: "user" | "assistant" | "system" | "tool";
@@ -57,13 +40,7 @@ CRITICAL RULES:
 3. Before calling cancel_my_ticket, confirm WHICH ticket the user wants to cancel.
 4. If the user names a shop loosely (e.g. "the burmese place"), call list_shops first to disambiguate, then confirm with the user.
 5. Reservations do not exist yet — only walk-in queue tokens. Be honest if asked.
-
-ANTI-HALLUCINATION RULES — these are not negotiable:
-A. You may ONLY claim a token was taken if you JUST received a successful join_queue tool result with ok=true AND a numeric ticket_no in THIS turn. You may NOT rely on prior turns.
-B. If join_queue returned an "error" field (or ok is missing/false), you MUST say "I couldn't take the token" and quote the error text. NEVER invent a ticket_no.
-C. When the user clearly says yes / confirms / "go ahead" after you proposed taking a token, you MUST call join_queue immediately. Do NOT respond with success text without calling the tool.
-D. Quote ticket_no and queue_position EXACTLY as they appear in the tool result. Never round, change, or guess them.
-E. The same rules apply to cancel_my_ticket — only claim success after a successful tool result this turn.
+6. After joining a queue, tell the user the ticket number and their queue position from the tool result.
 
 Be warm, concise, helpful. Use markdown sparingly. English. Under 120 words unless detail is requested.`,
 
@@ -84,13 +61,7 @@ Be warm, concise, helpful. Use markdown sparingly. English. Under 120 words unle
 3. cancel_my_ticket မခေါ်မီ မည်သည့် ticket ကို ဖျက်မည်ဆိုသည် အတည်ပြုပါ။
 4. ဆိုင်နာမည်ကို ဝါးဝါးပြောလျှင် list_shops ဖြင့် ရှာဖွေပြီး အတည်ပြုပါ။
 5. Myanpace တွင် reservation စနစ်မရှိသေးပါ — walk-in queue token များသာရှိသည်။
-
-HALLUCINATION မဖြစ်စေရန် တင်းကြပ်သော စည်းမျဉ်းများ:
-A. ဤ turn အတွင်း join_queue tool က ok=true နှင့် ticket_no ပါသော အောင်မြင်သည့် ရလဒ်ပြန်လာမှသာ "token ရပါပြီ" ဟု ပြောနိုင်သည်။ ယခင် turn ၏ ရလဒ်ကို မမှီခိုပါနှင့်။
-B. join_queue က "error" field ပြန်ပါက (သို့မဟုတ် ok မပါ/false ဖြစ်ပါက) "token မရရှိပါ" ဟု ပြောပြီး error စာသားကို ပြန်ပြောရမည်။ ticket_no ကို ကိုယ်တိုင် မဖန်တီးပါနှင့်။
-C. သုံးစွဲသူက "ဟုတ်ကဲ့"၊ "လုပ်ပါ"၊ "သဘောတူပါသည်" စသည် အတည်ပြုလျှင် join_queue ကို ချက်ချင်း ခေါ်ရမည်။ tool မခေါ်ဘဲ အောင်မြင်ကြောင်း မပြောပါနှင့်။
-D. ticket_no နှင့် queue_position ကို tool result အတိုင်း တိကျစွာ ပြောရမည်။ ပြောင်းခြင်း/ခန့်မှန်းခြင်း မပြုပါနှင့်။
-E. cancel_my_ticket အတွက်လည်း တူညီသော စည်းမျဉ်းများ — အောင်မြင်သည့် tool result ပြန်လာမှသာ အောင်မြင်ကြောင်း ပြောရမည်။
+6. queue ဝင်ပြီးပါက ticket နံပါတ်နှင့် queue position ကို သုံးစွဲသူအား ပြောပြပါ။
 
 ဖော်ရွေစွာ၊ တိုတောင်းရှင်းလင်းစွာ မြန်မာဘာသာဖြင့် ဖြေပါ။ ၁၂၀ စကားလုံးအောက် တိုတောင်းအောင် ဖြေပါ။`,
 };
@@ -453,16 +424,6 @@ async function executeTool(
 }
 
 export async function POST(req: NextRequest) {
-  // 0. Bail early if OpenAI isn't configured. We do this before any DB work so
-  //    a misconfigured deployment is cheap and obvious.
-  const openai = getOpenAI();
-  if (!openai) {
-    return NextResponse.json(
-      { error: "PaceAI is not configured (missing OPENAI_API_KEY)." },
-      { status: 503 },
-    );
-  }
-
   // 1. Auth detection. Anonymous and authed visitors both allowed; tool surface
   //    and rate-limit budget differ.
   const supabase = createClient(await cookies());
@@ -536,28 +497,13 @@ export async function POST(req: NextRequest) {
       .map((m) => ({ role: m.role, content: m.content }) as ChatMessage),
   ];
 
-  // Short id so we can correlate log lines from one chat turn.
-  const turnId = Math.random().toString(36).slice(2, 8);
-  // Track mutation outcomes — we append a deterministic footer for these so
-  // the user sees ground truth even if the model paraphrases incorrectly.
-  type MutationOutcome = {
-    tool: "join_queue" | "cancel_my_ticket";
-    ok: boolean;
-    payload: any;
-  };
-  const mutationOutcomes: MutationOutcome[] = [];
-
-  console.log(
-    `[pace-ai ${turnId}] start user=${user?.id ?? "anon"} isCustomer=${isCustomer} lang=${selectedLang}`,
-  );
-
-  // 3. Tool-calling loop, non-streaming. OpenAI streaming delivers tool calls
-  //    in chunks which makes mid-stream dispatch brittle — resolve all tool
-  //    rounds first, then stream the final assistant turn.
+  // 3. Tool-calling loop, non-streaming. Groq's streaming API delivers tool
+  //    calls in chunks which makes mid-stream dispatch brittle — resolve all
+  //    tool rounds first, then stream the final assistant turn.
   try {
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-      const completion = await openai.chat.completions.create({
-        model: CHAT_MODEL,
+      const completion = await groq.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
         messages: working as any,
         tools: tools as any,
         tool_choice: "auto",
@@ -569,16 +515,7 @@ export async function POST(req: NextRequest) {
       if (!choice) break;
 
       const toolCalls = choice.tool_calls ?? [];
-      if (toolCalls.length === 0) {
-        console.log(`[pace-ai ${turnId}] round=${round} no tool calls → finalize`);
-        break;
-      }
-
-      console.log(
-        `[pace-ai ${turnId}] round=${round} tool_calls=[${toolCalls
-          .map((tc: any) => tc.function.name)
-          .join(", ")}]`,
-      );
+      if (toolCalls.length === 0) break;
 
       working.push({
         role: "assistant",
@@ -597,35 +534,10 @@ export async function POST(req: NextRequest) {
             tc.function.arguments ?? "{}",
             { userId: isCustomer ? user!.id : null },
           );
-
-          // Per-call log line: name, raw args, summary of result. Truncate
-          // payload to keep Vercel function logs readable.
-          const resultStr = JSON.stringify(result);
-          console.log(
-            `[pace-ai ${turnId}]   ${tc.function.name}(${
-              tc.function.arguments
-            }) → ${resultStr.slice(0, 500)}${resultStr.length > 500 ? "…" : ""}`,
-          );
-
-          // Capture mutation outcomes for the deterministic footer.
-          if (tc.function.name === "join_queue") {
-            mutationOutcomes.push({
-              tool: "join_queue",
-              ok: !!(result as any)?.ok,
-              payload: result,
-            });
-          } else if (tc.function.name === "cancel_my_ticket") {
-            mutationOutcomes.push({
-              tool: "cancel_my_ticket",
-              ok: !!(result as any)?.ok,
-              payload: result,
-            });
-          }
-
           return {
             role: "tool" as const,
             tool_call_id: tc.id,
-            content: resultStr,
+            content: JSON.stringify(result),
           };
         }),
       );
@@ -645,8 +557,8 @@ export async function POST(req: NextRequest) {
 
   // 4. Stream the final assistant turn. tool_choice "none" so the model
   //    commits to text and doesn't open another tool round we won't handle.
-  const stream = await openai.chat.completions.create({
-    model: CHAT_MODEL,
+  const stream = await groq.chat.completions.create({
+    model: "llama-3.3-70b-versatile",
     messages: working as any,
     tools: tools as any,
     tool_choice: "none",
@@ -654,46 +566,6 @@ export async function POST(req: NextRequest) {
     max_tokens: 600,
     stream: true,
   });
-
-  // Build a deterministic footer from the actual mutation outcomes. We append
-  // this AFTER the model finishes streaming so the user sees ground truth even
-  // if the model paraphrased the result incorrectly (e.g. claims success when
-  // join_queue returned an error, or fabricates a ticket number).
-  function buildOutcomeFooter(): string {
-    if (mutationOutcomes.length === 0) return "";
-    const lines: string[] = [];
-    for (const m of mutationOutcomes) {
-      if (m.tool === "join_queue") {
-        if (m.ok) {
-          const p = m.payload ?? {};
-          lines.push(
-            `✅ **Ticket #${p.ticket_no ?? "?"} taken** at ${p.shop ?? "?"} — position ${p.queue_position ?? "?"} in queue${
-              p.called_immediately ? " (you're up next!)" : ""
-            }.`,
-          );
-        } else {
-          lines.push(
-            `❌ **Could not take a token** — ${
-              (m.payload as { error?: string })?.error ?? "unknown error"
-            }.`,
-          );
-        }
-      } else if (m.tool === "cancel_my_ticket") {
-        if (m.ok) {
-          lines.push(`✅ **Ticket cancelled.**`);
-        } else {
-          lines.push(
-            `❌ **Could not cancel ticket** — ${
-              (m.payload as { error?: string })?.error ?? "unknown error"
-            }.`,
-          );
-        }
-      }
-    }
-    return `\n\n---\n${lines.join("\n")}`;
-  }
-
-  const footer = buildOutcomeFooter();
 
   const encoder = new TextEncoder();
   const readable = new ReadableStream({
@@ -712,12 +584,6 @@ export async function POST(req: NextRequest) {
           ),
         );
       } finally {
-        if (footer) {
-          controller.enqueue(encoder.encode(footer));
-          console.log(
-            `[pace-ai ${turnId}] footer appended (${mutationOutcomes.length} mutation outcome(s))`,
-          );
-        }
         controller.close();
       }
     },

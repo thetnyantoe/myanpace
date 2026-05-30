@@ -241,10 +241,9 @@ export default function NavBar({ initialUser }: NavBarProps) {
                 aria-label="Language"
               >
                 <Globe className="w-5 h-5" />
-                <span className="text-sm font-medium">{currentLang}</span>
               </button>
               {langMenuOpen && (
-                <div className="absolute top-full right-0 mt-5 w-36 bg-white rounded-xl shadow-lg border border-[#d6d6d5] py-2 z-50 text-[#1d2846] flex flex-col overflow-hidden">
+                <div className="absolute top-full left-0 mt-5 w-36 bg-white rounded-xl shadow-lg border border-[#d6d6d5] py-2 z-50 text-[#1d2846] flex flex-col overflow-hidden">
                   <button
                     onClick={() => {
                       setCurrentLang("Eng");
@@ -570,6 +569,7 @@ export default function NavBar({ initialUser }: NavBarProps) {
                       localStorage.removeItem("qm_dismissed_tokens");
                     } catch {}
                     await logout();
+                    window.location.href = "/login"; // Forces the page to unmount and direct to the login page immediately
                   }}
                 >
                   <button

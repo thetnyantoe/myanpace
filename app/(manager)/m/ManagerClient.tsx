@@ -332,12 +332,22 @@ export default function ManagerClient({ shopId: propShopId }: ManagerPageProps) 
   const showCompactCards =
     staffFilter === "COMPLETED" || staffFilter === "NOSHOW";
 
-  const handleSignOut = useCallback(() => {
+  const handleSignOut = useCallback(async () => {
     showToast("Logged out successfully", "info");
+    
+    // Attempt to kill Supabase session explicitly as well to ensure total logout
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error("Supabase signOut error:", err);
+    }
+    
     document.cookie =
       "backendtestui_session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      
     setTimeout(() => {
-      window.location.href = "/";
+      window.location.href = "/login"; // Redirect to login page instead of homepage
     }, 800);
   }, [showToast]);
 
@@ -347,7 +357,7 @@ export default function ManagerClient({ shopId: propShopId }: ManagerPageProps) 
         <div className="text-center bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
           <p className="text-slate-500 font-medium mb-4">{shopError}</p>
           <button
-            onClick={() => (window.location.href = "/")}
+            onClick={() => (window.location.href = "/login")}
             className="px-6 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm"
           >
             Go to Login
