@@ -134,7 +134,17 @@ export default function NavBar({ initialUser }: NavBarProps) {
   if (!mounted) return null;
 
   // Manager dashboard owns its own header — hide the global navbar there.
-  if (pathname === "/m" || pathname?.startsWith("/m/")) return null;
+  if (
+    pathname === "/m" ||
+    pathname?.startsWith("/m/") ||
+    pathname === "/o" ||
+    pathname?.startsWith("/o/") ||
+    pathname === "/login" ||
+    pathname?.startsWith("/login/") ||
+    pathname === "/register" ||
+    pathname?.startsWith("/register/")
+  )
+    return null;
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -229,14 +239,20 @@ export default function NavBar({ initialUser }: NavBarProps) {
               {langMenuOpen && (
                 <div className="absolute top-full right-0 mt-5 w-36 bg-white rounded-xl shadow-lg border border-[#d6d6d5] py-2 z-50 text-[#1d2846] flex flex-col overflow-hidden">
                   <button
-                    onClick={() => { setCurrentLang('Eng'); setLangMenuOpen(false); }}
-                    className={`px-4 py-2 text-sm text-left hover:bg-[#f3f4f5] transition-colors ${currentLang === 'Eng' ? 'font-bold' : 'font-medium'}`}
+                    onClick={() => {
+                      setCurrentLang("Eng");
+                      setLangMenuOpen(false);
+                    }}
+                    className={`px-4 py-2 text-sm text-left hover:bg-[#f3f4f5] transition-colors ${currentLang === "Eng" ? "font-bold" : "font-medium"}`}
                   >
                     English
                   </button>
                   <button
-                    onClick={() => { setCurrentLang('Mm'); setLangMenuOpen(false); }}
-                    className={`px-4 py-2 text-sm text-left hover:bg-[#f3f4f5] transition-colors ${currentLang === 'Mm' ? 'font-bold' : 'font-medium'}`}
+                    onClick={() => {
+                      setCurrentLang("Mm");
+                      setLangMenuOpen(false);
+                    }}
+                    className={`px-4 py-2 text-sm text-left hover:bg-[#f3f4f5] transition-colors ${currentLang === "Mm" ? "font-bold" : "font-medium"}`}
                   >
                     Myanmar (Mm)
                   </button>
@@ -351,7 +367,7 @@ export default function NavBar({ initialUser }: NavBarProps) {
           >
             <Search className="w-5 h-5" />
           </button>
-          
+
           <div className="relative flex items-center">
             <button
               onClick={() => setLangMenuOpen(!langMenuOpen)}
@@ -362,14 +378,20 @@ export default function NavBar({ initialUser }: NavBarProps) {
             {langMenuOpen && (
               <div className="absolute top-full right-0 mt-2 w-36 bg-white rounded-xl shadow-lg border border-[#d6d6d5] py-2 z-50 flex flex-col overflow-hidden text-[#1d2846]">
                 <button
-                  onClick={() => { setCurrentLang('Eng'); setLangMenuOpen(false); }}
-                  className={`px-4 py-2 text-sm text-left hover:bg-[#f3f4f5] transition-colors ${currentLang === 'Eng' ? 'font-bold' : 'font-medium'}`}
+                  onClick={() => {
+                    setCurrentLang("Eng");
+                    setLangMenuOpen(false);
+                  }}
+                  className={`px-4 py-2 text-sm text-left hover:bg-[#f3f4f5] transition-colors ${currentLang === "Eng" ? "font-bold" : "font-medium"}`}
                 >
                   English
                 </button>
                 <button
-                  onClick={() => { setCurrentLang('Mm'); setLangMenuOpen(false); }}
-                  className={`px-4 py-2 text-sm text-left hover:bg-[#f3f4f5] transition-colors ${currentLang === 'Mm' ? 'font-bold' : 'font-medium'}`}
+                  onClick={() => {
+                    setCurrentLang("Mm");
+                    setLangMenuOpen(false);
+                  }}
+                  className={`px-4 py-2 text-sm text-left hover:bg-[#f3f4f5] transition-colors ${currentLang === "Mm" ? "font-bold" : "font-medium"}`}
                 >
                   Myanmar
                 </button>
@@ -428,7 +450,10 @@ export default function NavBar({ initialUser }: NavBarProps) {
             >
               <X className="w-5 h-5 text-[#1d2846]" />
             </button>
-            <form onSubmit={handleSearchSubmit} className="flex-1 bg-[#f3f4f5] border border-[#d6d6d5] rounded-xl px-4 py-3 flex items-center gap-3">
+            <form
+              onSubmit={handleSearchSubmit}
+              className="flex-1 bg-[#f3f4f5] border border-[#d6d6d5] rounded-xl px-4 py-3 flex items-center gap-3"
+            >
               <Search className="w-4 h-4 text-[#949492]" />
               <input
                 autoFocus
@@ -445,7 +470,7 @@ export default function NavBar({ initialUser }: NavBarProps) {
               Suggested Spots
             </h3>
             {searchInput.trim() ? (
-              <button 
+              <button
                 onClick={(e) => handleSearchSubmit(e as any)}
                 className="bg-white w-full rounded-2xl border border-[#d6d6d5] p-5 text-center text-sm text-[#1d2846] hover:bg-gray-50 transition font-bold shadow-sm"
               >
