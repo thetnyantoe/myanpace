@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter, usePathname } from "next/navigation";
+import { toast } from "react-toastify";
 import Image from "next/image";
 import logo from "../../public/logo.jpg";
 import { logout } from "../../backend/actions"; // Kept server action logout
@@ -37,12 +39,57 @@ type NavBarProps = {
 };
 
 export default function NavBar({ initialUser }: NavBarProps) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
   const [mobileMenu, setMobileMenu] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const [qrScanOpen, setQrScanOpen] = useState(false);
+  const [scannerReady, setScannerReady] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const scannerRef = useRef<{ clear: () => Promise<void> } | null>(null);
+
+  const closeQrScanner = async () => {
+    setQrScanOpen(false);
+    setScannerReady(false);
+    if (scannerRef.current) {
+      try {
+        await scannerRef.current.clear();
+      } catch {}
+      scannerRef.current = null;
+    }
+  };
+
+  const openQrScanner = async () => {
+    setQrScanOpen(true);
+    setScannerReady(false);
+    const { Html5QrcodeScanner } = await import("html5-qrcode");
+    setTimeout(() => {
+      const scanner = new Html5QrcodeScanner(
+        "qr-reader-nav",
+        { fps: 10, qrbox: 220, aspectRatio: 1 },
+        false,
+      );
+      scannerRef.current = scanner;
+      scanner.render(
+        (text) => {
+          void closeQrScanner();
+          const trimmed = text.trim();
+          const match = trimmed.match(/\/shops\/([^/?#]+)/);
+          const shopId = match ? match[1] : trimmed;
+          if (!shopId) {
+            toast.error("Could not read shop code.");
+            return;
+          }
+          router.push(`/shops/${shopId}`);
+        },
+        () => {},
+      );
+      setScannerReady(true);
+    }, 100);
+  };
 
   // Initialize the state directly with the server-provided prop
   const [user, setUser] = useState<any>(initialUser);
@@ -64,14 +111,17 @@ export default function NavBar({ initialUser }: NavBarProps) {
   }, [initialUser]);
 
   useEffect(() => {
-    if (mobileMenu || searchOpen || accountOpen || aiOpen) {
+    if (mobileMenu || searchOpen || accountOpen || aiOpen || qrScanOpen) {
       document.body.style.overflow = "hidden";
     } else {
       document.body.style.overflow = "";
     }
-  }, [mobileMenu, searchOpen, accountOpen, aiOpen]);
+  }, [mobileMenu, searchOpen, accountOpen, aiOpen, qrScanOpen]);
 
   if (!mounted) return null;
+
+  // Manager dashboard owns its own header — hide the global navbar there.
+  if (pathname === "/m" || pathname?.startsWith("/m/")) return null;
 
   return (
     <>
@@ -133,10 +183,18 @@ export default function NavBar({ initialUser }: NavBarProps) {
               Support
             </Link>
             <div className="w-px h-5 bg-white/20" />
-            <button className="hover:text-[#d6d6d5] transition-colors">
+            <Link
+              href="/"
+              className="hover:text-[#d6d6d5] transition-colors"
+              aria-label="Favorites"
+            >
               <Heart className="w-5 h-5" />
-            </button>
-            <button className="hover:text-[#d6d6d5] transition-colors relative">
+            </Link>
+            <button
+              onClick={() => toast.info("No new notifications")}
+              className="hover:text-[#d6d6d5] transition-colors relative"
+              aria-label="Notifications"
+            >
               <Bell className="w-5 h-5" />
             </button>
             <button
@@ -272,7 +330,10 @@ export default function NavBar({ initialUser }: NavBarProps) {
           <Ticket className="w-5 h-5" />
           <span className="text-[10px] font-medium">Token</span>
         </Link>
-        <button className="flex flex-col items-center gap-1 text-[#949492]">
+        <button
+          onClick={openQrScanner}
+          className="flex flex-col items-center gap-1 text-[#949492]"
+        >
           <QrCode className="w-5 h-5" />
           <span className="text-[10px] font-medium">QR Scan</span>
         </button>
@@ -373,6 +434,7 @@ export default function NavBar({ initialUser }: NavBarProps) {
             </div>
 
             <div className="space-y-6">
+              {/* Preferences — disabled until backed by real settings
               <div>
                 <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-[#949492] mb-3 pl-1">
                   Settings
@@ -389,6 +451,7 @@ export default function NavBar({ initialUser }: NavBarProps) {
                   </button>
                 </div>
               </div>
+              */}
 
               {user ? (
                 <form
@@ -417,6 +480,36 @@ export default function NavBar({ initialUser }: NavBarProps) {
                 </Link>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* QR Scanner Overlay */}
+      {qrScanOpen && (
+        <div className="fixed inset-0 bg-[#f3f4f5] z-[100] flex flex-col">
+          <div className="px-5 py-4 bg-white border-b border-[#d6d6d5] flex items-center justify-between">
+            <h2 className="font-bold text-lg text-[#1d2846]">Scan Shop QR</h2>
+            <button
+              onClick={closeQrScanner}
+              className="w-9 h-9 rounded-full bg-[#f3f4f5] flex items-center justify-center"
+              aria-label="Close scanner"
+            >
+              <X className="w-5 h-5 text-[#1d2846]" />
+            </button>
+          </div>
+          <div className="p-5 flex-1 overflow-y-auto">
+            <p className="text-sm text-[#949492] mb-4 text-center">
+              Point your camera at the shop's QR code to open it.
+            </p>
+            <div
+              id="qr-reader-nav"
+              className="bg-white rounded-2xl border border-[#d6d6d5] overflow-hidden shadow-sm"
+            />
+            {!scannerReady && (
+              <p className="text-xs text-[#949492] mt-4 text-center">
+                Starting camera…
+              </p>
+            )}
           </div>
         </div>
       )}
