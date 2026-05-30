@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import ShopTable from "./shoptable";
 import AddShop from "./addshop";
+import Image from "next/image";
+import logo from "@/public/logo.jpg";
 
 export default function Owner() {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -101,12 +103,16 @@ export default function Owner() {
         {/* LOGO */}
         <div className="flex h-20 items-center border-b border-white/10 px-5">
           <div className="flex w-full items-center gap-3 overflow-hidden">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white text-xl font-bold text-[#1d2846] shadow-md">
-              MP
-            </div>
+            <Image
+              src={logo}
+              width={50}
+              height={50}
+              className="size-10 rounded-md"
+              alt="logo"
+            />
 
             {!isCollapsed && (
-              <span className="truncate text-2xl font-bold tracking-tight">
+              <span className="truncate text-lg font-extrabold tracking-tight jost">
                 MyanPace
               </span>
             )}

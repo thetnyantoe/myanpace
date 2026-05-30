@@ -6,7 +6,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { toast } from "react-toastify";
 import Image from "next/image";
 import logo from "../../public/logo.jpg";
-import { logout } from "../../backend/actions"; // Kept server action logout
+import { logout } from "../../backend/actions";
 
 import {
   Bell,
@@ -26,13 +26,14 @@ import {
   Bot,
 } from "lucide-react";
 import { AiOverlay } from "./aioverlay";
+import StarIcon from "@/public/icons/star";
 
-// Flexible type definition matching the data returned from your session file
 type NavBarProps = {
   initialUser: {
     name: string;
     email: string | null;
     role: string;
+    score: number | null;
     brand: string | null;
     avatar?: string;
   } | null;
@@ -131,8 +132,13 @@ export default function NavBar({ initialUser }: NavBarProps) {
   if (!mounted) return null;
 
   // Manager dashboard owns its own header — hide the global navbar there.
-  if (pathname === "/m" || pathname?.startsWith("/m/")) return null;
-
+  if (
+    pathname === "/m" ||
+    pathname?.startsWith("/m/") ||
+    pathname === "/o" ||
+    pathname?.startsWith("/o/")
+  )
+    return null;
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchInput.trim()) {
@@ -140,7 +146,6 @@ export default function NavBar({ initialUser }: NavBarProps) {
       router.push(`/shops?search=${encodeURIComponent(searchInput.trim())}`);
     }
   };
-
   return (
     <>
       {/* Desktop Header */}
@@ -174,7 +179,7 @@ export default function NavBar({ initialUser }: NavBarProps) {
 
         {/* Center */}
         <div className="flex items-center gap-4">
-          <nav className="bg-[#1d2846]/95 backdrop-blur-xl text-white rounded-full px-8 py-2 flex items-center gap-6 shadow-2xl border border-white/10">
+          <nav className="bg-[#1d2846]/95 backdrop-blur-xl text-white rounded-full px-4 py-1.5 flex items-center gap-6 shadow-2xl border border-white/10">
             <Link
               href="/shops"
               className="text-sm font-medium hover:text-[#d6d6d5] transition-colors"
@@ -233,7 +238,7 @@ export default function NavBar({ initialUser }: NavBarProps) {
           {/* PaceAI Button */}
           <button
             onClick={() => setAiOpen(true)}
-            className="cursor-pointer w-[55px] h-[55px] rounded-full bg-[#1d2846] relative overflow-hidden shadow-[0_4px_15px_rgba(29,40,70,0.3)] flex items-center justify-center group hover:scale-105 transition-all"
+            className="cursor-pointer w-[45px] h-[45px] rounded-full bg-[#1d2846] relative overflow-hidden shadow-[0_4px_15px_rgba(29,40,70,0.3)] flex items-center justify-center group hover:scale-105 transition-all"
           >
             <div className="absolute inset-0 animate-spin-slow bg-[conic-gradient(from_0deg,transparent_0%,rgba(255,255,255,0.05)_25%,transparent_50%,rgba(29,40,70,0.5)_75%,transparent_100%)]" />
             <div className="flex items-center gap-[2px] relative z-10">
@@ -387,7 +392,10 @@ export default function NavBar({ initialUser }: NavBarProps) {
             >
               <X className="w-5 h-5 text-[#1d2846]" />
             </button>
-            <form onSubmit={handleSearchSubmit} className="flex-1 bg-[#f3f4f5] border border-[#d6d6d5] rounded-xl px-4 py-3 flex items-center gap-3">
+            <form
+              onSubmit={handleSearchSubmit}
+              className="flex-1 bg-[#f3f4f5] border border-[#d6d6d5] rounded-xl px-4 py-3 flex items-center gap-3"
+            >
               <Search className="w-4 h-4 text-[#949492]" />
               <input
                 autoFocus
@@ -404,7 +412,7 @@ export default function NavBar({ initialUser }: NavBarProps) {
               Suggested Spots
             </h3>
             {searchInput.trim() ? (
-              <button 
+              <button
                 onClick={(e) => handleSearchSubmit(e as any)}
                 className="bg-white w-full rounded-2xl border border-[#d6d6d5] p-5 text-center text-sm text-[#1d2846] hover:bg-gray-50 transition font-bold shadow-sm"
               >
@@ -462,33 +470,16 @@ export default function NavBar({ initialUser }: NavBarProps) {
                   </p>
                 )}
                 {user?.brand && (
-                  <span className="inline-block mt-2 text-[10px] bg-[#1d2846]/10 text-[#1d2846] px-2 py-0.5 rounded-md font-bold">
+                  <span className="inline-block mt-2 text-[10px] bg-[#1d2846]/10 text-[#1d2846] px-2 py-0.5 rounded-md font-[900]">
                     Brand: {user.brand}
                   </span>
                 )}
               </div>
             </div>
-
+            <div className="bg-white rounded-3xl border border-[#d6d6d5] p-5 flex items-center gap-2 shadow-sm mb-6 jost text-lg">
+              <StarIcon /> {user.score} Scores
+            </div>
             <div className="space-y-6">
-              {/* Preferences — disabled until backed by real settings
-              <div>
-                <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-[#949492] mb-3 pl-1">
-                  Settings
-                </h3>
-                <div className="bg-white rounded-2xl border border-[#d6d6d5] overflow-hidden shadow-sm">
-                  <button className="w-full px-5 py-4 flex items-center justify-between hover:bg-[#f3f4f5] transition-colors">
-                    <div className="flex items-center gap-3">
-                      <Settings className="w-5 h-5 text-[#949492]" />
-                      <span className="font-medium text-sm text-[#1d2846]">
-                        Preferences
-                      </span>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-[#949492]" />
-                  </button>
-                </div>
-              </div>
-              */}
-
               {user ? (
                 <form
                   action={async () => {

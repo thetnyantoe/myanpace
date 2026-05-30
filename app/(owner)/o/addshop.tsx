@@ -171,7 +171,7 @@ export default function AddShop() {
               </h2>
 
               <p className="text-xs font-medium text-[#949492]">
-                Complete the form below to onboard a new partner.
+                Complete the form below to onboard a new branch.
               </p>
             </div>
           </div>
@@ -184,7 +184,7 @@ export default function AddShop() {
           {/* Shop Name */}
           <FieldLabel label="Official Venue Name" />
 
-          <div className="md:col-span-2">
+          <div className="md:col-span-2 mt-[-20px]">
             <InputWrapper icon={<Store className="w-4 h-4" />}>
               <input
                 name="name"
@@ -445,7 +445,7 @@ export default function AddShop() {
         {/* Footer */}
         <div className="mt-10 pt-6 border-t border-[#d6d6d5]/40 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-[10px] font-bold text-[#949492] uppercase tracking-widest">
-            MyanPace Admin System
+            MyanPace Owner System
           </p>
 
           <button

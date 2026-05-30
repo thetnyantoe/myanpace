@@ -8,17 +8,11 @@ import {
   createQueueTicket,
   fetchAllTickets,
 } from "@/backend/queue";
-import {
-  WAIT_MINUTES_PER_GROUP,
-  TOTAL_WINDOW_MS,
-} from "@/lib/queue/constants";
+import { WAIT_MINUTES_PER_GROUP, TOTAL_WINDOW_MS } from "@/lib/queue/constants";
 import { sendPush, setupTicketPush } from "@/lib/queue/push";
 import { playNotificationSound } from "@/lib/queue/sound";
 import { computeTimerState } from "@/lib/queue/timer";
-import {
-  isActiveQueueStatus,
-  STATUS_LABELS,
-} from "@/lib/queue/types";
+import { isActiveQueueStatus, STATUS_LABELS } from "@/lib/queue/types";
 import {
   Heart,
   Clock as ClockIcon,
@@ -157,10 +151,7 @@ export default function ShopBrowser({
       .register("/sw.js")
       .catch((e) => console.warn("SW registration failed:", e));
 
-    if (
-      "Notification" in window &&
-      Notification.permission === "default"
-    ) {
+    if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission().catch(() => {});
     }
 
@@ -188,7 +179,9 @@ export default function ShopBrowser({
       if (!token || token.status !== "PENDING") return;
 
       const pending = allTickets
-        .filter((t) => sameShop(t.shopId, token.shopId) && t.status === "PENDING")
+        .filter(
+          (t) => sameShop(t.shopId, token.shopId) && t.status === "PENDING",
+        )
         .sort(
           (a, b) =>
             new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
@@ -231,12 +224,14 @@ export default function ShopBrowser({
         myTokenIds.includes(merged.id) &&
         merged.notifiedAt
       ) {
-        const elapsed =
-          Date.now() - new Date(merged.notifiedAt).getTime();
+        const elapsed = Date.now() - new Date(merged.notifiedAt).getTime();
         if (elapsed >= TOTAL_WINDOW_MS - 5000) {
           setShowAutoCancelBanner(true);
         }
-        if (merged.subscription && !notifiedCanceledRef.current.has(merged.id)) {
+        if (
+          merged.subscription &&
+          !notifiedCanceledRef.current.has(merged.id)
+        ) {
           notifiedCanceledRef.current.add(merged.id);
           const shopName =
             initialShops.find((s) => s.id === merged.shopId)?.name ||
@@ -316,7 +311,8 @@ export default function ShopBrowser({
   // Customer warning modal at 3-minute mark (auto-cancel runs on manager side)
   useEffect(() => {
     const myNOTIFIEDTokens = tickets.filter(
-      (t) => myTokenIds.includes(t.id) && t.status === "NOTIFIED" && t.notifiedAt,
+      (t) =>
+        myTokenIds.includes(t.id) && t.status === "NOTIFIED" && t.notifiedAt,
     );
 
     myNOTIFIEDTokens.forEach((token) => {
@@ -333,7 +329,9 @@ export default function ShopBrowser({
         warnedTokensRef.current.add(token.id);
         setWarningTokenId(token.id);
         setIsWarningModalOpen(true);
-        setExpiredCountdown(Math.max(1, Math.min(60, Math.ceil(totalRemain / 1000))));
+        setExpiredCountdown(
+          Math.max(1, Math.min(60, Math.ceil(totalRemain / 1000))),
+        );
         playNotificationSound("warning");
       }
     });
@@ -508,7 +506,8 @@ export default function ShopBrowser({
     if (!activeShopDetail) return 0;
     return tickets.filter(
       (t) =>
-        sameShop(t.shopId, activeShopDetail.id) && isActiveQueueStatus(t.status),
+        sameShop(t.shopId, activeShopDetail.id) &&
+        isActiveQueueStatus(t.status),
     ).length;
   }, [activeShopDetail, tickets]);
 
@@ -664,10 +663,10 @@ export default function ShopBrowser({
   }, []);
 
   return (
-    <div className="min-h-screen bg-bgMain py-10">
+    <div className="min-h-screen bg-bgMain py-10 sm:py-2 ">
       <section
         id="venues"
-        className="max-w-[1400px] mx-auto px-5 lg:px-8 relative z-20 flex-1 w-full pt-24 lg:pt-32"
+        className="max-w-[1400px] mx-auto px-5 lg:px-8 relative z-20 flex-1 w-full pt-24 lg:pt-28"
       >
         <div
           className="text-center mb-8 lg:mb-10 hidden lg:block animate-slide-up"
@@ -820,10 +819,13 @@ export default function ShopBrowser({
                                   <span
                                     className={`text-sm font-black ${timerState.inWarning || timerState.isUrgent ? "text-red-600" : "text-blue-600"}`}
                                   >
-                                    {Math.floor(timerState.displayMs / 1000 / 60)}
+                                    {Math.floor(
+                                      timerState.displayMs / 1000 / 60,
+                                    )}
                                     :
                                     {String(
-                                      Math.ceil(timerState.displayMs / 1000) % 60,
+                                      Math.ceil(timerState.displayMs / 1000) %
+                                        60,
                                     ).padStart(2, "0")}
                                   </span>
                                 </div>
@@ -976,7 +978,9 @@ export default function ShopBrowser({
               const hasActiveQueue = myActiveTickets.some(
                 (t) =>
                   t.shopId === shop.id &&
-                  (t.status === "PENDING" || t.status === "NOTIFIED" || t.status === "SERVING"),
+                  (t.status === "PENDING" ||
+                    t.status === "NOTIFIED" ||
+                    t.status === "SERVING"),
               );
 
               return (
@@ -1182,7 +1186,9 @@ export default function ShopBrowser({
               {myActiveTickets.some(
                 (t) =>
                   t.shopId === activeShopDetail.id &&
-                  (t.status === "PENDING" || t.status === "NOTIFIED" || t.status === "SERVING"),
+                  (t.status === "PENDING" ||
+                    t.status === "NOTIFIED" ||
+                    t.status === "SERVING"),
               ) ? (
                 <button
                   disabled

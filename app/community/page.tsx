@@ -340,7 +340,7 @@ export default function Community() {
   });
 
   return (
-    <div className="min-h-screen bg-[#f3f4f5] px-4 py-6 lg:px-8">
+    <div className="min-h-screen bg-[#f3f4f5] px-4 py-6 lg:px-8 pt-[80px] xs:pt-[100px]">
       <div className="mx-auto flex max-w-[1400px] gap-8">
         {/* Sidebar Left */}
         <aside className="hidden lg:flex w-[260px] shrink-0 flex-col gap-6">

@@ -10,6 +10,7 @@ export type Profile = {
   email: string | null;
   role: string;
   brand: string | null;
+  score: number | null;
 };
 
 export async function getShopSession(): Promise<ShopSession | null> {
@@ -64,6 +65,7 @@ async function getManagerProfile(
     email: null,
     role: "MANAGER",
     brand: brand?.name ?? null,
+    score: null,
   };
 }
 
@@ -73,7 +75,7 @@ async function getAuthUserProfile(
 ): Promise<Profile | null> {
   const { data: user } = await supabase
     .from("User")
-    .select("name, email, role")
+    .select("name, email, role,score")
     .eq("id", userId)
     .maybeSingle();
 
@@ -94,6 +96,7 @@ async function getAuthUserProfile(
     email: user.email,
     role: user.role,
     brand,
+    score: user.score ?? 0,
   };
 }
 
