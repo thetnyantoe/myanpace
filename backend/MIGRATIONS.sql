@@ -34,14 +34,52 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Ticket_shopId_ticketNo_unique"
   ON "Ticket" ("shopId", "ticketNo");
 
 
--- 4. Drop User.password  ---------------------------------------------------
+-- 4. Ticket.warnedAt  -------------------------------------------------------
+-- Stamped exactly once by the queue-tick edge function when a NOTIFIED ticket
+-- crosses the 3-minute CALL_WINDOW. NULL check keeps the warning push
+-- idempotent across cron firings.
+
+ALTER TABLE "Ticket" ADD COLUMN IF NOT EXISTS "warnedAt" timestamptz;
+
+
+-- 5. pg_cron schedule for queue-tick  ---------------------------------------
+-- Fires the queue-tick edge function every minute. The function scans
+-- NOTIFIED tickets and (a) sends the 3-min warning push, (b) auto-cancels
+-- anything past the 4-min total window. pg_cron's floor is 1 minute, so
+-- warnings may fire up to ~60s after the boundary — acceptable given the
+-- 1-minute gap between CALL_WINDOW_MS (3min) and TOTAL_WINDOW_MS (4min).
+--
+-- Requires the pg_cron + pg_net extensions enabled in Supabase.
+-- Replace <PROJECT_REF> with your project ref and store the cron secret in
+-- Vault (see https://supabase.com/docs/guides/database/vault).
+--
+-- CREATE EXTENSION IF NOT EXISTS pg_cron;
+-- CREATE EXTENSION IF NOT EXISTS pg_net;
+--
+-- SELECT cron.schedule(
+--   'queue-tick-every-minute',
+--   '* * * * *',
+--   $$
+--   SELECT net.http_post(
+--     url     := 'https://<PROJECT_REF>.functions.supabase.co/queue-tick',
+--     headers := jsonb_build_object(
+--       'Content-Type',  'application/json',
+--       'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'QUEUE_TICK_SECRET')
+--     ),
+--     body    := '{}'::jsonb
+--   );
+--   $$
+-- );
+
+
+-- 6. Drop User.password  ---------------------------------------------------
 -- Credentials are owned by Supabase Auth. The new code no longer writes
 -- this column. Run AFTER deploying so no live code reads/writes it.
 
 -- ALTER TABLE "User" DROP COLUMN IF EXISTS "password";
 
 
--- 5. Shop.password — bcrypt re-hash  ---------------------------------------
+-- 7. Shop.password — bcrypt re-hash  ---------------------------------------
 -- loginManager now lazy-rehashes plaintext rows on successful login. After
 -- a few weeks (once all active shops have logged in), drop the legacy
 -- branch in backend/actions.ts and verify no plaintext rows remain:

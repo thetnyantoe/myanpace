@@ -10,7 +10,7 @@ import {
   fetchMyActiveTicketIds,
 } from "@/backend/queue";
 import { WAIT_MINUTES_PER_GROUP, TOTAL_WINDOW_MS } from "@/lib/queue/constants";
-import { sendPush, setupTicketPush } from "@/lib/queue/push";
+import { setupTicketPush } from "@/lib/queue/push";
 import { playNotificationSound } from "@/lib/queue/sound";
 import { computeTimerState } from "@/lib/queue/timer";
 import { isActiveQueueStatus, STATUS_LABELS } from "@/lib/queue/types";
@@ -231,14 +231,9 @@ export default function ShopBrowser({
       if (pos === 1 && !notifiedAlmostRef.current.has(tokenId)) {
         notifiedAlmostRef.current.add(tokenId);
         const shopName = shopNames.get(token.shopId) || "the shop";
-        if (token.subscription) {
-          sendPush(
-            token.subscription,
-            `⏳ ${shopName}: You're Next!`,
-            "There is only 1 person ahead of you. Get ready!",
-            "queued",
-          );
-        }
+        // Push is fired server-side by notifyAlmostTurn() when the head ticket
+        // moves to NOTIFIED. Here we only handle the in-app feedback for users
+        // who already have the page open.
         showToast(`⏳ You're next at ${shopName}!`);
         playNotificationSound("queued");
       }
@@ -268,36 +263,20 @@ export default function ShopBrowser({
         if (elapsed >= TOTAL_WINDOW_MS - 5000) {
           setShowAutoCancelBanner(true);
         }
-        if (
-          merged.subscription &&
-          !notifiedCanceledRef.current.has(merged.id)
-        ) {
+        if (!notifiedCanceledRef.current.has(merged.id)) {
           notifiedCanceledRef.current.add(merged.id);
-          const shopName =
-            initialShops.find((s) => s.id === merged.shopId)?.name ||
-            "the shop";
-          sendPush(
-            merged.subscription,
-            `❌ ${shopName}: No Show`,
-            `Your ticket #${merged.ticketNo} was marked as no show.`,
-            "canceled",
-          );
         }
         playNotificationSound("canceled");
       }
 
       if (merged.status === "NOTIFIED" && myTokenIds.includes(merged.id)) {
+        // Push is fired server-side in updateQueueTicketStatus when the
+        // manager clicks Call. Local-only feedback for an open tab below.
         playNotificationSound("called");
-        const shopName =
-          initialShops.find((s) => s.id === merged.shopId)?.name || "the shop";
-        if (merged.subscription) {
-          sendPush(
-            merged.subscription,
-            `🔔 ${shopName}: It's Your Turn!`,
-            `Ticket #${merged.ticketNo} — please come to the counter within 3 minutes!`,
-            "called",
-          );
-        }
+      }
+
+      if (merged.status === "COMPLETED" && myTokenIds.includes(merged.id)) {
+        playNotificationSound("queued");
       }
     } else if (payload.eventType === "DELETE") {
       next = prev.filter((t) => t.id !== payload.old.id);
@@ -686,13 +665,7 @@ export default function ShopBrowser({
       );
     }
 
-    await setupTicketPush(
-      ticket.id,
-      nextTicketNo,
-      queuePosition,
-      targetShop.name,
-      immediateCall,
-    );
+    await setupTicketPush(ticket.id);
   };
 
   useEffect(() => {

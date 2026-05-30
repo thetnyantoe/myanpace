@@ -1,7 +1,7 @@
 // sw.js — QueueMaster Service Worker
 // Pure Web Push API (no Firebase). Place at ROOT of your site.
 
-const CACHE_NAME = 'queuemaster-v3';
+const CACHE_NAME = 'queuemaster-v4';
 
 self.addEventListener('install', (event) => {
     self.skipWaiting();
@@ -26,39 +26,44 @@ self.addEventListener('push', (event) => {
 
     const type = data.type || 'generic';
 
-    // ── 5 Notification Stages ────────────────────────────────────────────────
+    // ── Notification Stages ──────────────────────────────────────────────────
     // 1. token_confirmed : Just got token
     // 2. almost_turn     : Person in front got called
     // 3. called          : It is your turn
     // 4. warning         : 3 mins passed
     // 5. canceled        : Token voided
+    // 6. finish          : Service completed
 
     const isYourTurn = type === 'called' || type === 'immediate_call';
     const isWarning  = type === 'warning';
     const isCanceled = type === 'canceled';
     const isAlmost   = type === 'almost_turn';
+    const isFinish   = type === 'finish';
 
     const options = {
         body: data.body,
         icon: '/icon.png',
         badge: '/icon.png',
-        
+
         // Distinct vibration sequences for different urgency levels
-        vibrate: isYourTurn ? [300, 100, 300, 100, 300] : 
-                 isWarning  ? [500, 200, 500, 200, 500] : 
-                 isCanceled ? [100, 50, 100] : 
-                 isAlmost   ? [200, 100, 200] : [150],
-        
+        vibrate: isYourTurn ? [300, 100, 300, 100, 300] :
+                 isWarning  ? [500, 200, 500, 200, 500] :
+                 isCanceled ? [100, 50, 100] :
+                 isAlmost   ? [200, 100, 200] :
+                 isFinish   ? [150, 80, 150] : [150],
+
         data: data.data || {},
-        
+
         // Keep highly important notifications on screen until interacted with
-        requireInteraction: isYourTurn || isWarning, 
-        
+        requireInteraction: isYourTurn || isWarning,
+
         // Tags group notifications so they update each other instead of spamming
-        tag: isYourTurn ? 'qm-turn' : 
-             isWarning  ? 'qm-warn' : 
-             isCanceled ? 'qm-cancel' : 'qm-queued',
-             
+        tag: isYourTurn ? 'qm-turn' :
+             isWarning  ? 'qm-warn' :
+             isCanceled ? 'qm-cancel' :
+             isFinish   ? 'qm-finish' :
+             isAlmost   ? 'qm-almost' : 'qm-queued',
+
         renotify: true
     };
 

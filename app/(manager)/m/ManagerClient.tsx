@@ -8,7 +8,6 @@ import React, {
   useState,
 } from "react";
 import { createClient } from "@/utils/supabase/client";
-import { sendPush } from "@/lib/queue/push";
 import { computeTimerState, formatCountdown } from "@/lib/queue/timer";
 import type { QueueTicket, StaffFilter, TicketStatus } from "@/lib/queue/types";
 import {
@@ -220,15 +219,9 @@ export default function ManagerClient({ shopId: propShopId }: ManagerPageProps) 
         newStatus === "NOSHOW" ? "info" : "success",
       );
 
-      if (newStatus === "NOTIFIED" && token?.subscription) {
-        const shopName = shop?.name || "the shop";
-        await sendPush(
-          token.subscription,
-          `🔔 ${shopName}: It's Your Turn!`,
-          `Ticket #${token.ticketNo} — please come to the counter within 3 minutes!`,
-          "called",
-        );
-      }
+      // Notifications (#3 your turn, #5 cancel, #6 finish) fire server-side
+      // from updateQueueTicketStatus so they work even when no browser tab is
+      // open. Manager just sees the local toast above.
 
       if (newStatus === "COMPLETED" || newStatus === "NOSHOW") {
         notifiedWarningRef.current.delete(tokenId);
@@ -238,40 +231,10 @@ export default function ManagerClient({ shopId: propShopId }: ManagerPageProps) 
     [tokens, shop?.name, showToast, initShopData],
   );
 
-  useEffect(() => {
-    const notifiedTokens = tokens.filter(
-      (t) => t.status === "NOTIFIED" && t.notifiedAt,
-    );
-    if (notifiedTokens.length === 0) return;
-
-    notifiedTokens.forEach((token) => {
-      const { inWarning, totalRemain } = computeTimerState(
-        token.notifiedAt!,
-        currentTime,
-      );
-
-      if (inWarning && !notifiedWarningRef.current.has(token.id)) {
-        notifiedWarningRef.current.add(token.id);
-        if (token.subscription) {
-          const shopName = shop?.name || "the shop";
-          sendPush(
-            token.subscription,
-            `⚠️ ${shopName}: Time is up!`,
-            "Your 3 minutes have passed. Return to the counter now or your token will be canceled.",
-            "warning",
-          );
-        }
-      }
-
-      if (
-        totalRemain <= 0 &&
-        !notifiedWarningRef.current.has(`${token.id}_canceled`)
-      ) {
-        notifiedWarningRef.current.add(`${token.id}_canceled`);
-        updateStatus(token.id, "NOSHOW");
-      }
-    });
-  }, [currentTime, tokens, shop?.name, updateStatus]);
+  // The 3-minute warning (#4) and 4-minute auto-cancel (#5a) are driven by
+  // the Supabase queue-tick edge function on a pg_cron schedule — they run
+  // even when no browser tab is open. The dashboard just observes the
+  // resulting status/warnedAt change via realtime.
 
   const closeScanner = useCallback(async () => {
     setIsScannerOpen(false);

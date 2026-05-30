@@ -1,4 +1,4 @@
-import { getPushUrl, getSupabaseAnonKey, VAPID_PUBLIC_KEY } from "./constants";
+import { VAPID_PUBLIC_KEY } from "./constants";
 
 export function urlB64ToUint8Array(base64String: string): BufferSource {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -14,70 +14,16 @@ export function urlB64ToUint8Array(base64String: string): BufferSource {
   return view;
 }
 
-async function showLocalNotification(
-  title: string,
-  body: string,
-  type: string,
-): Promise<void> {
-  if (typeof window === "undefined") return;
-  if (!("Notification" in window) || Notification.permission !== "granted") return;
-  try {
-    const reg = await navigator.serviceWorker.ready;
-    await reg.showNotification(title, {
-      body,
-      icon: "/logo.jpg",
-      badge: "/logo.jpg",
-      tag: `qm-${type}`,
-      data: { type },
-    });
-  } catch (e) {
-    console.warn("Local notification failed:", e);
-  }
-}
-
-export async function sendPush(
-  subscription: PushSubscriptionJSON,
-  title: string,
-  body: string,
-  type = "generic",
-): Promise<void> {
-  if (!subscription) return;
-
-  const pushUrl = getPushUrl();
-  const anonKey = getSupabaseAnonKey();
-
-  if (pushUrl && anonKey) {
-    try {
-      const res = await fetch(pushUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${anonKey}`,
-        },
-        body: JSON.stringify({ subscription, title, body, type }),
-      });
-      if (!res.ok) {
-        console.warn("Push edge-function failed, falling back to local:", await res.text());
-        await showLocalNotification(title, body, type);
-      }
-    } catch (e) {
-      console.warn("Push error, falling back to local:", e);
-      await showLocalNotification(title, body, type);
-    }
-  } else {
-    await showLocalNotification(title, body, type);
-  }
-}
-
-export async function setupTicketPush(
-  tokenId: string,
-  ticketNo: number,
-  queuePosition: number,
-  shopName: string,
-  immediateCall: boolean,
-): Promise<void> {
+/**
+ * Subscribe the browser to Web Push and persist the subscription for this
+ * ticket. Notifications themselves (#1 token confirmed, #3 your turn, etc.)
+ * are fired from the server — saveTicketSubscription sends the initial
+ * confirmation the first time a subscription is attached.
+ */
+export async function setupTicketPush(tokenId: string): Promise<void> {
   if (typeof window === "undefined") return;
   if (!("Notification" in window) || !("PushManager" in window)) return;
+  if (!("serviceWorker" in navigator)) return;
 
   const perm = await Notification.requestPermission();
   if (perm !== "granted") return;
@@ -94,24 +40,6 @@ export async function setupTicketPush(
     const saveResult = await saveTicketSubscription(tokenId, sub.toJSON());
     if (!saveResult.ok) {
       console.warn("Failed to save push subscription:", saveResult.error);
-    }
-
-    if (immediateCall || queuePosition === 1) {
-      await sendPush(
-        sub.toJSON(),
-        `🔔 ${shopName}: It's Your Turn!`,
-        `Ticket #${ticketNo} — please come to the counter within 3 minutes!`,
-        "immediate_call",
-      );
-    } else {
-      const ahead = queuePosition - 1;
-      const peopleStr = ahead === 1 ? "1 person is" : `${ahead} people are`;
-      await sendPush(
-        sub.toJSON(),
-        `✅ ${shopName}: Token Confirmed`,
-        `You got ticket #${ticketNo}. There ${peopleStr} ahead of you.`,
-        "queued",
-      );
     }
   } catch (e) {
     console.warn("Push subscribe failed:", e);

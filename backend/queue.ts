@@ -8,6 +8,54 @@ import {
   ACTIVE_QUEUE_STATUSES,
   type TicketStatus,
 } from "@/lib/queue/types";
+import { pushToTicket, pushToSubscription } from "@/lib/queue/push-server";
+
+async function getShopName(shopId: string): Promise<string> {
+  try {
+    const admin = createAdminClient();
+    const { data } = await admin
+      .from("Shop")
+      .select("name")
+      .eq("id", shopId)
+      .maybeSingle();
+    return (data?.name as string) || "the shop";
+  } catch {
+    return "the shop";
+  }
+}
+
+/**
+ * After a ticket moves to NOTIFIED ("Call" clicked), the customer at the head
+ * of the remaining queue should be warned they are next. We fire-and-forget so
+ * the manager's action isn't blocked by a push failure.
+ */
+async function notifyAlmostTurn(
+  shopId: string,
+  excludeTicketId: string,
+  shopName: string,
+): Promise<void> {
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("Ticket")
+      .select("id, ticketNo")
+      .eq("shopId", shopId)
+      .eq("status", "PENDING")
+      .neq("id", excludeTicketId)
+      .order("createdAt", { ascending: true })
+      .limit(1);
+
+    if (error || !data || data.length === 0) return;
+    const head = data[0];
+    await pushToTicket(head.id, {
+      title: `⏳ ${shopName}: You're Next!`,
+      body: `Ticket #${head.ticketNo} — only 1 person ahead of you. Get ready!`,
+      type: "almost_turn",
+    });
+  } catch (e) {
+    console.warn("[notifyAlmostTurn] failed:", e);
+  }
+}
 
 export type QueueActionResult<T = unknown> =
   | { ok: true; data: T }
@@ -280,6 +328,34 @@ export async function updateQueueTicketStatus(
       .single();
 
     if (error) return { ok: false, error: error.message };
+
+    // Fire-and-forget server-side push triggers. Awaited so the action
+    // doesn't return before the edge-function call lands, but errors inside
+    // pushToTicket are already swallowed so they can't block the status
+    // change the manager just made.
+    const shopName = await getShopName(existing.shopId);
+    if (newStatus === "NOTIFIED") {
+      await pushToTicket(ticketId, {
+        title: `🔔 ${shopName}: It's Your Turn!`,
+        body: `Ticket #${existing.ticketNo} — please come to the counter within 3 minutes!`,
+        type: "called",
+      });
+      // The next pending ticket in this shop is now the head — warn them.
+      await notifyAlmostTurn(existing.shopId, ticketId, shopName);
+    } else if (newStatus === "COMPLETED") {
+      await pushToTicket(ticketId, {
+        title: `✅ ${shopName}: All done!`,
+        body: `Ticket #${existing.ticketNo} completed. Thanks for visiting!`,
+        type: "finish",
+      });
+    } else if (newStatus === "NOSHOW") {
+      await pushToTicket(ticketId, {
+        title: `❌ ${shopName}: Token Canceled`,
+        body: `Ticket #${existing.ticketNo} was canceled.`,
+        type: "canceled",
+      });
+    }
+
     return { ok: true, data };
   } catch (e) {
     return {
@@ -351,7 +427,7 @@ export async function saveTicketSubscription(
     // a push subscription to it.
     const { data: existing, error: findError } = await admin
       .from("Ticket")
-      .select("id, customerId")
+      .select("id, customerId, shopId, ticketNo, status, subscription")
       .eq("id", ticketId)
       .maybeSingle();
 
@@ -364,12 +440,36 @@ export async function saveTicketSubscription(
       };
     }
 
+    const isFirstSubscribe = !existing.subscription;
+
     const { error } = await admin
       .from("Ticket")
       .update({ subscription })
       .eq("id", ticketId);
 
     if (error) return { ok: false, error: error.message };
+
+    // Fire #1 (token confirmed) or fold straight to #3 (immediate call) the
+    // first time the customer grants push permission. Subsequent re-subscribes
+    // (e.g. user toggled permission off then on) don't re-fire — the customer
+    // already has the original confirmation.
+    if (isFirstSubscribe) {
+      const shopName = await getShopName(existing.shopId);
+      if (existing.status === "NOTIFIED") {
+        await pushToSubscription(subscription, {
+          title: `🔔 ${shopName}: It's Your Turn!`,
+          body: `Ticket #${existing.ticketNo} — please come to the counter within 3 minutes!`,
+          type: "immediate_call",
+        });
+      } else if (existing.status === "PENDING") {
+        await pushToSubscription(subscription, {
+          title: `✅ ${shopName}: Token Confirmed`,
+          body: `You got ticket #${existing.ticketNo}. We'll notify you when it's almost your turn.`,
+          type: "token_confirmed",
+        });
+      }
+    }
+
     return { ok: true, data: null };
   } catch (e) {
     return {
