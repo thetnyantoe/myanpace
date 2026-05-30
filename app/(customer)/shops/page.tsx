@@ -27,5 +27,19 @@ export default async function Shops() {
 
   const shops = (data ?? []) as Array<any>;
 
-  return <ShopBrowser initialShops={shops} userId={user?.id} />;
+  const uniqueCategories = Array.from(
+    new Set(
+      shops
+        .map((shop) => shop.category?.category_name)
+        .filter((catName): catName is string => !!catName),
+    ),
+  );
+
+  return (
+    <ShopBrowser
+      initialShops={shops}
+      userId={user?.id}
+      categories={uniqueCategories}
+    />
+  );
 }

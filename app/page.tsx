@@ -27,13 +27,23 @@ export default async function Home() {
       shops = data;
     }
   } catch (err) {
-    // Fail silently and let HomeClient load fallback Database representation
     console.error("Failed to query live shops table: ", err);
   }
 
+  const uniqueCategories = Array.from(
+    new Set(
+      shops
+        .map((shop) => shop.category?.category_name)
+        .filter((catName): catName is string => !!catName),
+    ),
+  );
   return (
     <>
-      <HomeClient initialShops={shops} userId={user?.id} />
+      <HomeClient
+        initialShops={shops}
+        userId={user?.id}
+        categories={uniqueCategories}
+      />
     </>
   );
 }

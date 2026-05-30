@@ -25,7 +25,6 @@ import {
   X as CrossIcon,
 } from "lucide-react";
 
-// Icon wrapper to handle the custom isFav prop
 const HeartIcon = ({
   isFav,
   className,
@@ -51,11 +50,13 @@ interface ShopItem {
 interface ShopBrowserProps {
   initialShops: any[];
   userId: string | null | undefined;
+  categories: string[];
 }
 
 export default function ShopBrowser({
   initialShops,
   userId,
+  categories,
 }: ShopBrowserProps) {
   const searchParams = useSearchParams();
 
@@ -921,7 +922,7 @@ export default function ShopBrowser({
             <div className="overflow-hidden min-h-0">
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pt-4 mt-2 border-t border-bgSurface">
                 <div className="flex flex-wrap items-center gap-2 lg:gap-3 w-full lg:w-auto overflow-x-auto hide-scrollbar pb-2 lg:pb-0">
-                  <select
+                  {/* <select
                     value={filterCategory}
                     onChange={(e) => setFilterCategory(e.target.value)}
                     className="bg-white border border-bgSurface text-xs sm:text-sm font-bold text-brandPrimary outline-none cursor-pointer px-4 py-2.5 rounded-xl shadow-sm shrink-0"
@@ -930,6 +931,19 @@ export default function ShopBrowser({
                     <option value="restaurant">Restaurants</option>
                     <option value="cafe">Cafes & Bakeries</option>
                     <option value="fastfood">Fast Casual</option>
+                  </select> */}
+
+                  <select
+                    value={filterCategory}
+                    onChange={(e) => setFilterCategory(e.target.value)}
+                    className="bg-white border border-bgSurface text-xs sm:text-sm font-bold text-brandPrimary outline-none cursor-pointer px-4 py-2.5 rounded-xl shadow-sm shrink-0"
+                  >
+                    <option value="all">All Categories</option>
+                    {categories.map((catName) => (
+                      <option key={catName} value={catName}>
+                        {catName}
+                      </option>
+                    ))}
                   </select>
 
                   <button

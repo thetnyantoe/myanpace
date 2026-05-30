@@ -9,9 +9,14 @@ import ShopBrowser from "@/app/components/ShopBrowser";
 interface HomeClientProps {
   initialShops: any[];
   userId: string | null | undefined;
+  categories: string[];
 }
 
-export default function HomeClient({ initialShops, userId }: HomeClientProps) {
+export default function HomeClient({
+  initialShops,
+  userId,
+  categories,
+}: HomeClientProps) {
   const [activeTokenId, setActiveTokenId] = useState<number | string | null>(
     null,
   );
@@ -89,10 +94,10 @@ export default function HomeClient({ initialShops, userId }: HomeClientProps) {
 
   return (
     <div className="flex flex-col min-h-screen">
-      <main className="flex-1 flex flex-col transition-opacity duration-300 w-full relative bg-bgMain">
+      <main className="flex-1 flex flex-col transition-opacity duration-300 w-full relative">
         <section
           id="heroSection"
-          className="pt-[80px] lg:pt-40 px-6 max-w-[1300px] mx-auto w-full flex flex-col lg:flex-row items-center justify-between relative overflow-visible gap-12 lg:gap-8 animate-slide-up"
+          className="pt-[80px] lg:pt-40 pb-12 lg:pb-24 px-6 max-w-[1300px] mx-auto w-full flex flex-col lg:flex-row items-center justify-between relative overflow-visible gap-12 lg:gap-8 animate-slide-up"
         >
           <div className="w-full lg:w-[45%] flex flex-col items-start text-left z-20">
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-bgSurface mb-6 shadow-sm bg-bgMain">
@@ -101,12 +106,12 @@ export default function HomeClient({ initialShops, userId }: HomeClientProps) {
                 Smart Dining Experience
               </span>
             </div>
-            <h1 className="text-5xl lg:text-[4.5rem] text-brandPrimary mb-6 leading-[1.05] font-medium tracking-tight">
+            <h1 className="text-5xl lg:text-[4.5rem] text-brandPrimary mb-6 leading-[1.05] font-bold tracking-tight">
               Savor the Flavors
               <br />
               of Fresh,
               <br />
-              <span className="text-textMuted font-[100] italic">
+              <span className="text-textMuted font-light italic">
                 Authentic Cuisine.
               </span>
             </h1>
@@ -249,7 +254,11 @@ export default function HomeClient({ initialShops, userId }: HomeClientProps) {
           </div>
         </section>
 
-        <ShopBrowser initialShops={initialShops} userId={userId} />
+        <ShopBrowser
+          initialShops={initialShops}
+          userId={userId}
+          categories={categories}
+        />
       </main>
 
       <div
