@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { toast } from "react-toastify";
 import Image from "next/image";
 import logo from "../../public/logo.jpg";
@@ -41,6 +41,7 @@ type NavBarProps = {
 export default function NavBar({ initialUser }: NavBarProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [mounted, setMounted] = useState(false);
   const [mobileMenu, setMobileMenu] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -50,6 +51,7 @@ export default function NavBar({ initialUser }: NavBarProps) {
   const [scannerReady, setScannerReady] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const scannerRef = useRef<{ clear: () => Promise<void> } | null>(null);
+  const [searchInput, setSearchInput] = useState("");
 
   const closeQrScanner = async () => {
     setQrScanOpen(false);
@@ -105,6 +107,14 @@ export default function NavBar({ initialUser }: NavBarProps) {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  // Set the search input automatically if loading via URL
+  useEffect(() => {
+    if (searchParams) {
+      const q = searchParams.get("search");
+      if (q) setSearchInput(q);
+    }
+  }, [searchParams]);
+
   // Sync state if the server prop dynamically changes
   useEffect(() => {
     setUser(initialUser);
@@ -122,6 +132,14 @@ export default function NavBar({ initialUser }: NavBarProps) {
 
   // Manager dashboard owns its own header — hide the global navbar there.
   if (pathname === "/m" || pathname?.startsWith("/m/")) return null;
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchInput.trim()) {
+      setSearchOpen(false);
+      router.push(`/shops?search=${encodeURIComponent(searchInput.trim())}`);
+    }
+  };
 
   return (
     <>
@@ -156,7 +174,7 @@ export default function NavBar({ initialUser }: NavBarProps) {
 
         {/* Center */}
         <div className="flex items-center gap-4">
-          <nav className="bg-[#1d2846]/95 backdrop-blur-xl text-white rounded-full px-8 py-3 flex items-center gap-6 shadow-2xl border border-white/10">
+          <nav className="bg-[#1d2846]/95 backdrop-blur-xl text-white rounded-full px-8 py-2 flex items-center gap-6 shadow-2xl border border-white/10">
             <Link
               href="/shops"
               className="text-sm font-medium hover:text-[#d6d6d5] transition-colors"
@@ -176,6 +194,12 @@ export default function NavBar({ initialUser }: NavBarProps) {
               Community
             </Link>
             <div className="w-px h-5 bg-white/20" />
+            <Link
+              href="/about"
+              className="text-sm font-medium hover:text-[#d6d6d5] transition-colors"
+            >
+              About
+            </Link>
             <Link
               href="/support"
               className="text-sm font-medium hover:text-[#d6d6d5] transition-colors"
@@ -209,7 +233,7 @@ export default function NavBar({ initialUser }: NavBarProps) {
           {/* PaceAI Button */}
           <button
             onClick={() => setAiOpen(true)}
-            className="cursor-pointer w-[60px] h-[60px] rounded-full bg-[#1d2846] relative overflow-hidden shadow-[0_4px_15px_rgba(29,40,70,0.3)] flex items-center justify-center group hover:scale-105 transition-all"
+            className="cursor-pointer w-[55px] h-[55px] rounded-full bg-[#1d2846] relative overflow-hidden shadow-[0_4px_15px_rgba(29,40,70,0.3)] flex items-center justify-center group hover:scale-105 transition-all"
           >
             <div className="absolute inset-0 animate-spin-slow bg-[conic-gradient(from_0deg,transparent_0%,rgba(255,255,255,0.05)_25%,transparent_50%,rgba(29,40,70,0.5)_75%,transparent_100%)]" />
             <div className="flex items-center gap-[2px] relative z-10">
@@ -363,22 +387,34 @@ export default function NavBar({ initialUser }: NavBarProps) {
             >
               <X className="w-5 h-5 text-[#1d2846]" />
             </button>
-            <div className="flex-1 bg-[#f3f4f5] border border-[#d6d6d5] rounded-xl px-4 py-3 flex items-center gap-3">
+            <form onSubmit={handleSearchSubmit} className="flex-1 bg-[#f3f4f5] border border-[#d6d6d5] rounded-xl px-4 py-3 flex items-center gap-3">
               <Search className="w-4 h-4 text-[#949492]" />
               <input
                 autoFocus
+                type="search"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
                 placeholder="Search venues..."
                 className="bg-transparent outline-none w-full text-sm font-medium text-[#1d2846] placeholder:text-[#949492]"
               />
-            </div>
+            </form>
           </div>
           <div className="flex-1 p-5">
             <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-[#949492] mb-4">
               Suggested Spots
             </h3>
-            <div className="bg-white rounded-2xl border border-[#d6d6d5] p-5 text-center text-sm text-[#949492]">
-              Search results will appear here.
-            </div>
+            {searchInput.trim() ? (
+              <button 
+                onClick={(e) => handleSearchSubmit(e as any)}
+                className="bg-white w-full rounded-2xl border border-[#d6d6d5] p-5 text-center text-sm text-[#1d2846] hover:bg-gray-50 transition font-bold shadow-sm"
+              >
+                Search for "{searchInput}"
+              </button>
+            ) : (
+              <div className="bg-white rounded-2xl border border-[#d6d6d5] p-5 text-center text-sm text-[#949492]">
+                Start typing to search...
+              </div>
+            )}
           </div>
         </div>
       )}

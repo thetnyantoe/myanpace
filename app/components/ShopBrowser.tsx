@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import {
   cancelQueueTicket,
@@ -62,6 +63,8 @@ export default function ShopBrowser({
   initialShops,
   userId,
 }: ShopBrowserProps) {
+  const searchParams = useSearchParams();
+
   // Filters & UI states
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [filterOpenNow, setFilterOpenNow] = useState<boolean>(false);
@@ -110,6 +113,13 @@ export default function ShopBrowser({
   const warnedTokensRef = useRef<Set<string>>(new Set());
   const [showAutoCancelBanner, setShowAutoCancelBanner] = useState(false);
   const [expiredCountdown, setExpiredCountdown] = useState(60);
+
+  // Handle initialization of Search query from URL params
+  useEffect(() => {
+    if (searchParams?.has("search")) {
+      setSearchQuery(searchParams.get("search") || "");
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     const interval = setInterval(() => setCurrentTime(Date.now()), 1000);
