@@ -195,7 +195,7 @@ export default function NavBar({ initialUser }: NavBarProps) {
               Shops
             </Link>
             <Link
-              href="/"
+              href="/token"
               className="text-sm font-medium hover:text-[#d6d6d5] transition-colors"
             >
               Token
@@ -411,7 +411,7 @@ export default function NavBar({ initialUser }: NavBarProps) {
           <span className="text-[10px] font-medium">Shop</span>
         </Link>
         <Link
-          href="/"
+          href="/token"
           className="flex flex-col items-center gap-1 text-[#949492]"
         >
           <Ticket className="w-5 h-5" />
