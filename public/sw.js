@@ -31,8 +31,8 @@ self.addEventListener("push", (event) => {
 
   const options = {
     body: data.body,
-    icon: "/icon.png",
-    badge: "/icon.png",
+    icon: "/logo.jpg",
+    badge: "/logo.jpg",
     vibrate: isYourTurn
       ? [300, 100, 300, 100, 300]
       : isWarning

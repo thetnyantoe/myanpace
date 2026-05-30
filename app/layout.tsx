@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -25,6 +25,16 @@ const jost = localFont({
 export const metadata: Metadata = {
   title: "MyanPace",
   description: "Smart Queue & Ticketing System",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    title: "MyanPace",
+    statusBarStyle: "default",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#6366f1",
 };
 
 // 1. Turned this into an async function

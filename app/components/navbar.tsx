@@ -114,7 +114,7 @@ export default function NavBar({ initialUser }: NavBarProps) {
               Shops
             </Link>
             <Link
-              href="/token"
+              href="/"
               className="text-sm font-medium hover:text-[#d6d6d5] transition-colors"
             >
               Token
@@ -266,7 +266,7 @@ export default function NavBar({ initialUser }: NavBarProps) {
           <span className="text-[10px] font-medium">Shop</span>
         </Link>
         <Link
-          href="/token"
+          href="/"
           className="flex flex-col items-center gap-1 text-[#949492]"
         >
           <Ticket className="w-5 h-5" />
@@ -277,7 +277,7 @@ export default function NavBar({ initialUser }: NavBarProps) {
           <span className="text-[10px] font-medium">QR Scan</span>
         </button>
         <Link
-          href="/favorites"
+          href="/"
           className="flex flex-col items-center gap-1 text-[#949492]"
         >
           <Heart className="w-5 h-5" />

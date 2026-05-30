@@ -14,6 +14,27 @@ export function urlB64ToUint8Array(base64String: string): BufferSource {
   return view;
 }
 
+async function showLocalNotification(
+  title: string,
+  body: string,
+  type: string,
+): Promise<void> {
+  if (typeof window === "undefined") return;
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    await reg.showNotification(title, {
+      body,
+      icon: "/logo.jpg",
+      badge: "/logo.jpg",
+      tag: `qm-${type}`,
+      data: { type },
+    });
+  } catch (e) {
+    console.warn("Local notification failed:", e);
+  }
+}
+
 export async function sendPush(
   subscription: PushSubscriptionJSON,
   title: string,
@@ -24,22 +45,27 @@ export async function sendPush(
 
   const pushUrl = getPushUrl();
   const anonKey = getSupabaseAnonKey();
-  if (!pushUrl || !anonKey) return;
 
-  try {
-    const res = await fetch(pushUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${anonKey}`,
-      },
-      body: JSON.stringify({ subscription, title, body, type }),
-    });
-    if (!res.ok) {
-      console.error("Push failed:", await res.text());
+  if (pushUrl && anonKey) {
+    try {
+      const res = await fetch(pushUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${anonKey}`,
+        },
+        body: JSON.stringify({ subscription, title, body, type }),
+      });
+      if (!res.ok) {
+        console.warn("Push edge-function failed, falling back to local:", await res.text());
+        await showLocalNotification(title, body, type);
+      }
+    } catch (e) {
+      console.warn("Push error, falling back to local:", e);
+      await showLocalNotification(title, body, type);
     }
-  } catch (e) {
-    console.warn("Push error:", e);
+  } else {
+    await showLocalNotification(title, body, type);
   }
 }
 

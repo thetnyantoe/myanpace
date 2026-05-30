@@ -141,6 +141,13 @@ export default function ShopBrowser({
       .register("/sw.js")
       .catch((e) => console.warn("SW registration failed:", e));
 
+    if (
+      "Notification" in window &&
+      Notification.permission === "default"
+    ) {
+      Notification.requestPermission().catch(() => {});
+    }
+
     const onSwMessage = (e: MessageEvent) => {
       if (e.data?.type === "PLAY_NOTIFICATION_SOUND") {
         playNotificationSound(e.data.notificationType);
@@ -230,6 +237,16 @@ export default function ShopBrowser({
 
       if (merged.status === "NOTIFIED" && myTokenIds.includes(merged.id)) {
         playNotificationSound("called");
+        const shopName =
+          initialShops.find((s) => s.id === merged.shopId)?.name || "the shop";
+        if (merged.subscription) {
+          sendPush(
+            merged.subscription,
+            `🔔 ${shopName}: It's Your Turn!`,
+            `Ticket #${merged.ticketNo} — please come to the counter within 3 minutes!`,
+            "called",
+          );
+        }
       }
     } else if (payload.eventType === "DELETE") {
       next = prev.filter((t) => t.id !== payload.old.id);
@@ -564,6 +581,8 @@ export default function ShopBrowser({
     if (!userId) {
       showToast("Please login or register to get a token.");
       setCurrentDetailId(null);
+      const next = encodeURIComponent(`/?shop=${shopId}`);
+      window.location.href = `/login?next=${next}`;
       return;
     }
     setPendingShopId(shopId);

@@ -1,6 +1,5 @@
+import { redirect } from "next/navigation";
+
 export default function Mytoken() {
-    return (
-      <div>mytoken</div>
-    );
-  }
-  
+  redirect("/");
+}
