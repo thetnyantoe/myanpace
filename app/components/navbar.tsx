@@ -237,7 +237,7 @@ export default function NavBar({ initialUser }: NavBarProps) {
             <div className="relative">
               <button
                 onClick={() => setLangMenuOpen(!langMenuOpen)}
-                className="hover:text-[#d6d6d5] transition-colors flex items-center gap-1"
+                className="hover:text-[#d6d6d5] transition-colors flex items-center gap-1 cursor-pointer"
                 aria-label="Language"
               >
                 <Globe className="w-5 h-5" />

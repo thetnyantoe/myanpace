@@ -18,6 +18,7 @@ import {
 type Post = {
   id: string;
   userId: string;
+  userName: string; // Resolves to User.name dynamically
   description: string;
   likeCount: number;
   image: string | null;
@@ -79,12 +80,12 @@ function PostPopup({
           <div className="bg-white p-5 md:p-6">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#1d2846] text-sm font-bold text-white">
-                {post.userId.charAt(0).toUpperCase()}
+                {(post.userName || "U").charAt(0).toUpperCase()}
               </div>
 
               <div>
                 <h4 className="text-sm font-bold text-[#1d2846]">
-                  {post.userId}
+                  {post.userName || "Unknown User"}
                 </h4>
 
                 <p className="text-xs text-[#949492]">
@@ -237,27 +238,59 @@ export default function Community() {
 
     const supabase = createClient();
 
-    const { data, error } = await supabase
+    // 1. Fetch raw posts from database
+    const { data: rawPosts, error: postError } = await supabase
       .from("Post")
       .select("id, userId, description, likeCount, image, created_at")
       .order("created_at", { ascending: false });
 
-    if (error) {
-      setError(error.message);
+    if (postError) {
+      setError(postError.message);
       setLoading(false);
       return;
     }
 
-    const fetchedPosts = data ?? [];
-    
-    // Randomize posts array to prevent static post showing
-    const shuffledPosts = [...fetchedPosts].sort(() => Math.random() - 0.5);
+    const fetchedPosts = rawPosts ?? [];
 
-    // 1. Show the randomly sorted posts immediately to the user
+    if (fetchedPosts.length === 0) {
+      setPosts([]);
+      setLoading(false);
+      return;
+    }
+
+    // 2. Fetch User Profiles to resolve matching names
+    const uniqueUserIds = Array.from(
+      new Set(fetchedPosts.map((p) => p.userId)),
+    );
+    const { data: userData } = await supabase
+      .from("User")
+      .select("id, name")
+      .in("id", uniqueUserIds);
+
+    const userMap = new Map<string, string>();
+    for (const u of userData ?? []) {
+      userMap.set(u.id, u.name);
+    }
+
+    // 3. Map names and Hydrate structural models
+    const mappedPosts: Post[] = fetchedPosts.map((post) => ({
+      id: post.id,
+      userId: post.userId,
+      userName: userMap.get(post.userId) ?? "Unknown User",
+      description: post.description,
+      likeCount: post.likeCount,
+      image: post.image,
+      created_at: post.created_at,
+    }));
+
+    // 4. Shuffling logic (Fixed scope sequence execution)
+    const shuffledPosts = [...mappedPosts].sort(() => Math.random() - 0.5);
+
+    // Update frontend state context
     setPosts(shuffledPosts);
     setLoading(false);
 
-    // 2. Fire metadata fetches asynchronously in the background
+    // Fire non-blocking metadata tasks in background
     loadComments(shuffledPosts);
     loadUserReactions(shuffledPosts);
     computeTopContributors(shuffledPosts);
@@ -522,8 +555,7 @@ export default function Community() {
   return (
     <div className="min-h-screen bg-[#f3f4f5] px-4 py-6 lg:px-8 pt-[80px] xs:pt-[100px] relative">
       <div className="mx-auto flex max-w-[1400px] gap-8">
-        
-        {/* Sidebar Left - Now Sticky */}
+        {/* Sidebar Left - Sticky */}
         <aside className="hidden lg:flex w-[260px] shrink-0 flex-col gap-6 sticky top-[100px] h-fit">
           <div className="rounded-3xl border border-[#d6d6d5] bg-white p-5">
             <h3 className="mb-4 text-[10px] font-bold uppercase tracking-[0.2em] text-[#949492]">
@@ -576,7 +608,6 @@ export default function Community() {
           </div>
         </aside>
 
-        {}
         {/* Main Content Feed */}
         <section className="flex-1">
           <form
@@ -666,12 +697,12 @@ export default function Community() {
                 >
                   <div className="flex items-center gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#1d2846] text-sm font-bold text-white">
-                      {post.userId.charAt(0).toUpperCase()}
+                      {post.userName.charAt(0).toUpperCase()}
                     </div>
 
                     <div>
                       <h4 className="text-sm font-bold text-[#1d2846]">
-                        {post.userId}
+                        {post.userName}
                       </h4>
                       <p className="text-xs text-[#949492]">
                         {new Date(post.created_at).toLocaleString()}
@@ -731,8 +762,7 @@ export default function Community() {
           </div>
         </section>
 
-        {}
-        {/* Sidebar Right - Now Sticky */}
+        {/* Sidebar Right - Sticky */}
         <aside className="hidden xl:block w-[300px] shrink-0 sticky top-[100px] h-fit">
           <div className="rounded-3xl border border-[#d6d6d5] bg-white p-5">
             <h3 className="mb-5 text-[10px] font-bold uppercase tracking-[0.2em] text-[#949492]">
@@ -790,7 +820,7 @@ export default function Community() {
         />
       )}
 
-      {/* Go to Up Button */}
+      {/* Scroll to Top Button */}
       {showScrollTop && (
         <button
           onClick={scrollToTop}
