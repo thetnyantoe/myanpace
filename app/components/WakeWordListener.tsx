@@ -275,7 +275,7 @@ export default function WakeWordListener() {
   return (
     <>
       {showPrompt && !enabled && (
-        <div className="fixed bottom-4 right-4 z-[60] max-w-xs rounded-xl bg-white shadow-lg ring-1 ring-black/5 p-4 flex gap-3 items-start">
+        <div className="fixed bottom-8 right-left z-[60] max-w-xs rounded-xl bg-white shadow-lg ring-1 ring-black/5 p-4 flex gap-3 items-start">
           <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600">
             <Mic className="w-5 h-5" />
           </div>
@@ -316,7 +316,9 @@ export default function WakeWordListener() {
       {!showPrompt && (
         <button
           onClick={enabled ? handleDisable : handleEnable}
-          aria-label={enabled ? "Disable Pace AI voice" : "Enable Pace AI voice"}
+          aria-label={
+            enabled ? "Disable Pace AI voice" : "Enable Pace AI voice"
+          }
           title={
             error
               ? error
@@ -328,7 +330,7 @@ export default function WakeWordListener() {
                     : "Voice enabled"
                 : "Enable “hey” voice"
           }
-          className={`fixed bottom-4 right-4 z-[55] rounded-full p-3 shadow-lg ring-1 ring-black/5 transition ${
+          className={`fixed bottom-[80px] left-4 z-[55] rounded-full p-3 shadow-lg ring-1 ring-black/5 transition ${
             enabled
               ? "bg-indigo-600 text-white hover:bg-indigo-700"
               : "bg-white text-gray-700 hover:bg-gray-50"

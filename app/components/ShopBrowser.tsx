@@ -412,29 +412,18 @@ export default function ShopBrowser({
 
       const restaurantImages = [
         "https://images.unsplash.com/photo-1544148103-0773bf10d330?w=800&auto=format&fit=crop&q=80",
-        "https://images.unsplash.com/photo-1512918728675-ed5a9ecdebfd?w=800&auto=format&fit=crop&q=80",
-        "https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?w=800&auto=format&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1667388969250-1c7220bf3f37?w=900&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8cmVzdGF1cmFudCUyMGludGVyaW9yfGVufDB8fDB8fHwy",
+        "https://images.unsplash.com/photo-1583354608715-177553a4035e?q=80&w=987&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
       ];
-      const cafeImages = [
-        "https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=800&auto=format&fit=crop&q=80",
-        "https://images.unsplash.com/photo-1493809842364-4c81cbac9ba0?w=800&auto=format&fit=crop&q=80",
-      ];
-      const fastfoodImages = [
-        "https://images.unsplash.com/photo-1550966871-3ed3cdb5ed0c?w=800&auto=format&fit=crop&q=80",
-        "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&auto=format&fit=crop&q=80",
-      ];
+
       const menuImages = [
-        "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800&auto=format&fit=crop&q=80",
-        "https://images.unsplash.com/photo-1595858000854-3e99e236594d?w=800&auto=format&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1663113093939-75a677758e79?w=900&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8ODh8fG1lbnUlMjBwcmV2aWV3fGVufDB8fDB8fHwy",
+        "https://images.unsplash.com/photo-1710732652617-264d6f860546?q=80&w=987&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
+        "https://media.istockphoto.com/id/1250720245/photo/bbq-or-summer-picnic-food-border-over-a-dark-stone-banner-background-overhead-view-with-copy.webp?a=1&b=1&s=612x612&w=0&k=20&c=mo6m1_a88qzcmOlCNPvogNfab-HO5K5NcxiaWn0u-8s=",
       ];
 
       const imageIndex = typeof s.id === "number" ? s.id : index + 1;
-      const imageList =
-        type === "cafe"
-          ? cafeImages
-          : type === "fastfood"
-            ? fastfoodImages
-            : restaurantImages;
+      const imageList = restaurantImages;
 
       return {
         id: s.id,
