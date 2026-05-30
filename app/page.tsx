@@ -6,12 +6,11 @@ export const dynamic = "force-dynamic";
 
 export default async function Home() {
   let shops: any[] = [];
-  let user: any = null; // 1. Declare 'user' in the outer scope
+  let user: any = null;
 
   try {
     const supabase = createClient(await cookies());
 
-    // 2. Assign the fetched user to the outer scope variable
     const {
       data: { user: authUser },
     } = await supabase.auth.getUser();
