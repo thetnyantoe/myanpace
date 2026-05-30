@@ -1,11 +1,19 @@
 "use server";
 
+import bcrypt from "bcryptjs";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { clearSession, setSession } from "@/backend/session";
+
+const BCRYPT_COST = 10;
+
+/** A bcrypt hash always starts with "$2a$", "$2b$", or "$2y$". */
+function isBcryptHash(value: string): boolean {
+  return /^\$2[aby]\$/.test(value);
+}
 
 export type ActionResult =
   | { ok: true; message: string }
@@ -103,11 +111,11 @@ export async function registerCustomer(
     };
   }
 
+  // Credentials are owned by Supabase Auth; never duplicate them into User.
   const { error: userError } = await admin.from("User").insert({
     id: authData.user.id,
     name,
     email,
-    password,
     role: "CUSTOMER",
   });
 
@@ -134,7 +142,25 @@ export async function loginManager(formData: FormData): Promise<ActionResult> {
     return { ok: false, error: "No shop found with that name." };
   }
 
-  if (shop.password !== password) {
+  // Support both bcrypt-hashed and legacy plaintext rows. Lazy-upgrade any
+  // plaintext row to bcrypt on first successful login so the plaintext
+  // version disappears as users sign in. Remove the plaintext branch once
+  // all rows are migrated.
+  let passwordOk = false;
+  if (isBcryptHash(shop.password)) {
+    passwordOk = await bcrypt.compare(password, shop.password);
+  } else if (shop.password === password) {
+    passwordOk = true;
+    try {
+      const admin = createAdminClient();
+      const hashed = await bcrypt.hash(password, BCRYPT_COST);
+      await admin.from("Shop").update({ password: hashed }).eq("id", shop.id);
+    } catch {
+      // Best-effort rehash; failure here must not block login.
+    }
+  }
+
+  if (!passwordOk) {
     return { ok: false, error: "Invalid password." };
   }
 
@@ -199,11 +225,11 @@ export async function addOwner(formData: FormData): Promise<ActionResult> {
     };
   }
 
+  // Credentials are owned by Supabase Auth; never duplicate them into User.
   const { error: userError } = await admin.from("User").insert({
     id: authData.user.id,
     name,
     email,
-    password,
     role: "OWNER",
   });
 
@@ -258,9 +284,11 @@ export async function addShop(formData: FormData): Promise<ActionResult> {
 
   const supabase = createClient(await cookies());
 
+  const hashedPassword = await bcrypt.hash(password, BCRYPT_COST);
+
   const { error } = await supabase.from("Shop").insert({
     name,
-    password,
+    password: hashedPassword,
     location,
     brandId,
     description,

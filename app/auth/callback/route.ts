@@ -50,11 +50,11 @@ export async function GET(request: Request) {
     .maybeSingle();
 
   if (!existing) {
+    // Credentials are owned by Supabase Auth; never duplicate into User.
     const { error: insertError } = await supabase.from("User").insert({
       id: user.id,
       email: user.email,
       name: displayName,
-      password: "OAUTH",
       role: "CUSTOMER",
     });
 
