@@ -623,6 +623,108 @@ export default function ManagerClient({ shopId: propShopId }: ManagerPageProps) 
   );
 }
 
+const ACCENT_CLASSES: Record<
+  string,
+  { bg: string; text: string; ring: string }
+> = {
+  amber: { bg: "bg-amber-50", text: "text-amber-700", ring: "ring-amber-100" },
+  blue: { bg: "bg-blue-50", text: "text-blue-700", ring: "ring-blue-100" },
+  indigo: {
+    bg: "bg-indigo-50",
+    text: "text-indigo-700",
+    ring: "ring-indigo-100",
+  },
+  emerald: {
+    bg: "bg-emerald-50",
+    text: "text-emerald-700",
+    ring: "ring-emerald-100",
+  },
+  rose: { bg: "bg-rose-50", text: "text-rose-700", ring: "ring-rose-100" },
+};
+
+function StatCard({
+  label,
+  value,
+  hint,
+  accent,
+  pulse = false,
+}: {
+  label: string;
+  value: number;
+  hint?: string;
+  accent: keyof typeof ACCENT_CLASSES;
+  pulse?: boolean;
+}) {
+  const a = ACCENT_CLASSES[accent];
+  return (
+    <div
+      className={`relative ${a.bg} rounded-xl px-4 py-3 ring-1 ${a.ring} overflow-hidden`}
+    >
+      {pulse && (
+        <span className="absolute top-3 right-3 flex h-2 w-2">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
+        </span>
+      )}
+      <p
+        className={`text-[11px] font-bold uppercase tracking-wider ${a.text} opacity-80`}
+      >
+        {label}
+      </p>
+      <p className="text-3xl font-black text-slate-900 leading-tight mt-0.5">
+        {value}
+      </p>
+      {hint && (
+        <p className="text-[11px] text-slate-500 mt-0.5 font-medium">{hint}</p>
+      )}
+    </div>
+  );
+}
+
+function CompactTokenRow({
+  token,
+  isLast,
+}: {
+  token: QueueTicket;
+  isLast: boolean;
+}) {
+  const time = new Date(token.createdAt).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const isCompleted = token.status === "COMPLETED";
+  const formattedId = `#${String(token.ticketNo).padStart(3, "0")}`;
+
+  return (
+    <div
+      className={`flex items-center justify-between px-4 py-3 ${
+        isLast ? "" : "border-b border-slate-100"
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <span
+          className={`w-1 h-8 rounded-full ${
+            isCompleted ? "bg-emerald-400" : "bg-rose-400"
+          }`}
+        />
+        <span className="font-black text-slate-800 text-lg tracking-tight">
+          {formattedId}
+        </span>
+        <span
+          className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+            isCompleted
+              ? "bg-emerald-50 text-emerald-700"
+              : "bg-rose-50 text-rose-600"
+          }`}
+        >
+          {isCompleted ? "DONE" : "NO SHOW"}
+        </span>
+      </div>
+      <span className="text-xs text-slate-400 font-medium">{time}</span>
+    </div>
+  );
+}
+
 function StaffTokenCard({
   token,
   currentTime,
@@ -671,11 +773,7 @@ function StaffTokenCard({
       ? computeTimerState(token.notifiedAt, currentTime)
       : null;
 
-  let buttons: React.ReactNode = (
-    <p className="text-xs text-slate-400 font-medium text-center w-full">
-      No further actions
-    </p>
-  );
+  let buttons: React.ReactNode = null;
 
   if (token.status === "PENDING") {
     buttons = (
@@ -767,7 +865,7 @@ function StaffTokenCard({
                 </span>
               </div>
             )}
-            <span className="text-xs text-slate-400">🕐 {time}</span>
+            <span className="text-xs text-slate-400 font-medium">{time}</span>
           </div>
         </div>
 
