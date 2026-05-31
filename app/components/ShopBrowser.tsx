@@ -25,6 +25,7 @@ import {
   Filter as FilterIcon,
   X as CrossIcon,
 } from "lucide-react";
+import PromotionBanner from "./promotionbanner";
 
 const HeartIcon = ({
   isFav,
@@ -900,6 +901,7 @@ export default function ShopBrowser({
                 );
               })}
             </div>
+            <PromotionBanner />
           </div>
         )}
 
