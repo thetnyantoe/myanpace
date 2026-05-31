@@ -13,11 +13,7 @@ import {
 } from "@/backend/queue";
 import { ACTIVE_QUEUE_STATUSES } from "@/lib/queue/types";
 
-// gpt-5-mini: cheap+fast tier with reliable tool calling and natural Burmese.
-// Replaces gpt-4o-mini which OpenAI retired — calls against the old name now
-// 404 and surfaced as a 500 here because the streaming call below is outside
-// the tool-loop try/catch.
-const CHAT_MODEL = "gpt-5-mini";
+const CHAT_MODEL = "gpt-4o-mini";
 
 // IMPORTANT: instantiate inside the handler, not at module top level. The
 // OpenAI SDK throws synchronously when `apiKey` is undefined, and Next.js
