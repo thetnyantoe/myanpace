@@ -563,7 +563,7 @@ export async function POST(req: NextRequest) {
         tools: tools as any,
         tool_choice: "auto",
         temperature: 0.4,
-        max_tokens: 600,
+        max_completion_tokens: 600,
       });
 
       const choice = completion.choices[0]?.message;
@@ -652,7 +652,7 @@ export async function POST(req: NextRequest) {
     tools: tools as any,
     tool_choice: "none",
     temperature: 0.4,
-    max_tokens: 600,
+    max_completion_tokens: 600,
     stream: true,
   });
 
